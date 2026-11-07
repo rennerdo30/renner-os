@@ -25,9 +25,14 @@ X pgrep -u "$USER_NAME" -x plasmashell >/dev/null || fail "no desktop session fo
 AS=(runuser -u "$USER_NAME" -- env "XDG_RUNTIME_DIR=/run/user/$uid" "DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/$uid/bus")
 
 echo "== download"
-T=180 X "${AS[@]}" curl -fsSL -o "/home/$USER_NAME/Downloads/test.exe" "$URL" || fail "download"
+dl=$(X "${AS[@]}" xdg-user-dir DOWNLOAD) || fail "no download folder"
+dl=${dl%$''}; dl=${dl%$'
+'}
+X "${AS[@]}" mkdir -p "$dl" || fail "cannot create $dl"
+EXE="$dl/test.exe"
+T=180 X "${AS[@]}" curl -fsSL -o "$EXE" "$URL" || fail "download"
 echo "== start (as a double-click would)"
-X "${AS[@]}" systemd-run --user --collect --unit=renner-exe-test /usr/bin/renner-exe "/home/$USER_NAME/Downloads/test.exe" \
+X "${AS[@]}" systemd-run --user --collect --unit=renner-exe-test /usr/bin/renner-exe "$EXE" \
     || fail "could not start renner-exe"
 start=$SECONDS
 for i in $(seq 1 24); do
