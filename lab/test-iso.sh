@@ -19,7 +19,7 @@ U() { L ui $VM "$@" >/dev/null || fail "ui $*"; }
 page() { L ui $VM --wait-page "$1" --fail-page 7 --timeout "${2:-120}" || fail "page $1"; }
 
 L down $VM >/dev/null; rm -f $SER
-L up $VM --window --iso $ISO --minutes 60 --no-enter >/dev/null
+L up $VM --window --iso $ISO --minutes 60 --no-enter >/dev/null || fail "VM did not start"
 sleep 6; L shot $VM $S/I0-bootmenu.png >/dev/null
 L key $VM ret                       # WHPX: the boot menu countdown does not run
 page 0 180; L shot $VM $S/I1-welcome.png >/dev/null
@@ -36,7 +36,7 @@ page 6 2400; L shot $VM $S/I6-done.png >/dev/null
 grep -ao "RENNER-INSTALL-RC=[0-9]*" $SER
 U next                               # Restart now
 for i in $(seq 1 60); do L status | grep -q "$VM: stopped" && break; sleep 2; done
-rm -f $SER; L up $VM --window --minutes 30 >/dev/null; sleep 40
+rm -f $SER; L up $VM --window --minutes 30 >/dev/null || fail "VM did not start after the install"; sleep 40
 VM=$VM bash lab/login.sh tom pw1 || fail "login as tom"
 sleep 8
 L shot $VM $S/I7-desktop.png

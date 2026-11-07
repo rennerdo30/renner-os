@@ -340,10 +340,13 @@ def cmd_up(a) -> None:
             print("note: the running cache stops before this VM; restart it with a longer --minutes")
     log = d / "qemu.log"
     log.write_text(" ".join(args) + "\n")
-    # A VM that was just stopped may still hold its ports for a moment; QEMU
-    # then fails with "Failed to find an available port" (2026-11-08).
+    # The ports can be taken: by a VM that was just stopped, and by WSL, which
+    # blocks these local ports while it runs and for about a minute after its
+    # last distro stopped. QEMU then fails ("Failed to find an available
+    # port") or freezes in the boot (2026-11-08).
     ports = [state["qmp_port"], ctl_port(state), qga_port(state)]
-    end = time.time() + 30
+    end = time.time() + 180
+    told = False
     while time.time() < end:
         busy = []
         for port in ports:
@@ -354,7 +357,10 @@ def cmd_up(a) -> None:
                     busy.append(port)
         if not busy:
             break
-        time.sleep(1)
+        if not told:
+            print(f"lab: waiting for ports {busy} (WSL or a stopping VM holds them)")
+            told = True
+        time.sleep(2)
     else:
         sys.exit(f"lab: ports still in use: {busy}")
     pid = spawn_detached(args, log)
