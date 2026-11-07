@@ -57,7 +57,7 @@ class Cache:
             self.stats[kind] += 1
 
 
-SOURCE_DIRS = ("installer", "install", "system")
+SOURCE_DIRS = ("installer", "install", "system", "iso")
 
 
 def source_tar(repo: Path) -> bytes:
@@ -114,6 +114,14 @@ def make_handler(cache: Cache):
                 self.serve_bytes(source_tar(cache.files), head)
                 self.note("file", "source.tar")
                 return
+            if path.startswith("/isos/"):  # the downloaded Arch ISOs, for the ISO patcher in the build VM
+                local = cache.root.parent / "isos" / path[len("/isos/"):]
+                if "/" not in path[len("/isos/"):] and local.is_file():
+                    self.serve_file(local, head)
+                    self.note("file", local.stat().st_size)
+                else:
+                    self.send_simple(404, b"not found\n")
+                return
             if path.startswith("/artifacts/"):  # build results uploaded by the build VM
                 local = cache.root.parent / "artifacts" / path[len("/artifacts/"):]
                 if local.is_file():
@@ -148,7 +156,8 @@ def make_handler(cache: Cache):
                 self.send_simple(400, b"bad artifact name\n")
                 return
             length = int(self.headers.get("Content-Length", "0"))
-            if not 0 < length <= 512 * 1024 * 1024:
+            limit = (4 << 30) if name.endswith((".iso", ".img")) else (512 << 20)  # patched ISOs are ~1.5 GB
+            if not 0 < length <= limit:
                 self.send_simple(400, b"bad length\n")
                 return
             target = cache.root.parent / "artifacts" / name[16:]
