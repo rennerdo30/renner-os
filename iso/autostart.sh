@@ -40,10 +40,12 @@ fi
 
 clear
 printf '\n  \033[1mrenner\033[0m\033[38;5;208m.dev\033[0m OS installer\n\n  Waiting for the network...\n'
+# Online means: a default route, and the mirror's host name resolves.
+host=geo.mirror.pkgbuild.com
+[[ -n $mirror ]] && host=$(sed -E 's#^[a-z]+://([^/:]+).*#\1#' <<<"$mirror")
 online=0
 for _ in $(seq 1 60); do
-    if ip route show default 2>/dev/null | grep -q . \
-        && getent ahosts "${mirror:+$(echo "$mirror" | sed -E 's#^[a-z]+://([^/:]+).*#\1#')}${mirror:-archlinux.org}" >/dev/null; then
+    if ip route show default 2>/dev/null | grep -q . && getent ahosts "$host" >/dev/null; then
         online=1
         break
     fi
