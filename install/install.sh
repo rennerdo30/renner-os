@@ -379,13 +379,22 @@ main() {
     set -e
     if ((status[0] != 0)); then
         umount -R "$TARGET" 2>/dev/null
+        report_serial "${status[0]}"
         exit "${status[0]}"
     fi
     ((status[1] == 0)) || echo "renner-install: warning: writing $LOG failed; the log is incomplete" >&2
     cp "$LOG" "$TARGET/var/log/renner-install.log"
     sync
     umount -R "$TARGET"
+    report_serial 0
     say "renner.dev OS is installed. Remove the install medium and reboot."
+}
+
+# With --serial-console the result also goes to the first serial port, so a
+# headless machine or a lab VM sees the end of the install without a screen.
+report_serial() {
+    ((SERIAL)) && [[ -w /dev/ttyS0 ]] && echo "RENNER-INSTALL-RC=$1" >/dev/ttyS0
+    return 0
 }
 
 main "$@"
