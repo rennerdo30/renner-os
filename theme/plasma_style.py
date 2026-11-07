@@ -168,7 +168,8 @@ def panel(path, alpha):
     # same frame with corners, which Plasma picks when borders are enabled.
     y = frame(svg, "", 1, PANEL, alpha, WHITE, 0.08, ("top",), 0)
     y += mask(svg, 1, ("top",), y)
-    y += hints(svg, "", {"top": 4, "bottom": 4, "left": 6, "right": 6}, y)
+    # Air around the icons, like the Windows 11 taskbar (owner, 2026-11-08).
+    y += hints(svg, "", {"top": 10, "bottom": 10, "left": 8, "right": 8}, y)
     svg.rect("thick-center", 0, y, 1, 1, PANEL, alpha)
     write(path, svg, y + 4)
 

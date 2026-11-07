@@ -1,0 +1,16 @@
+{
+    "KPackageStructure": "Plasma/Applet",
+    "KPlugin": {
+        "Authors": [{ "Name": "renner.dev" }],
+        "Category": "Application Launchers",
+        "Description": "Search first, with your pinned apps and all apps below",
+        "Description[de]": "Zuerst suchen, darunter angeheftete und alle Apps",
+        "Icon": "renner-start",
+        "Id": "dev.renner.start",
+        "License": "GPL-2.0-or-later",
+        "Name": "renner.dev Start",
+        "Version": "0.1"
+    },
+    "X-Plasma-API-Minimum-Version": "6.0",
+    "X-Plasma-Provides": ["org.kde.plasma.launchermenu"]
+}

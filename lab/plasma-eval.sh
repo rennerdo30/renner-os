@@ -18,6 +18,7 @@ X "${AS[@]}" sh -c '
     dbus-send --session --print-reply --dest=org.kde.plasmashell /PlasmaShell \
         org.kde.PlasmaShell.evaluateScript string:"$(cat /tmp/plasma-eval.js)"
     rm -f /tmp/plasma-eval.js
+    systemctl --user reset-failed plasma-plasmashell.service 2>/dev/null
     systemctl --user restart plasma-plasmashell.service'
 sleep 7
 L shot $VM "E:/AgentData/renneros-lab/vms/$VM/shots/P-${2:-eval}.png"

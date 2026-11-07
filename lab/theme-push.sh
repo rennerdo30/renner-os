@@ -17,6 +17,7 @@ ART=E:/AgentData/renneros-lab/artifacts
 
 python theme/colors.py >/dev/null
 python theme/plasma_style.py >/dev/null
+python theme/layout_sync.py >/dev/null
 python theme/manifest.py >/dev/null
 # Theme-related parts of system/ (the rest needs a real update).
 tar --force-local -C system -cf "$ART/theme.tar" \
@@ -48,6 +49,7 @@ X "${AS[@]}" sh -c '
     dbus-send --session --dest=org.kde.KWin /KWin org.kde.KWin.reconfigure >/dev/null 2>&1 || true
     plasma-apply-colorscheme RennerDark >/dev/null 2>&1 || true
     plasma-apply-desktoptheme renner >/dev/null 2>&1 || true
+    systemctl --user reset-failed plasma-plasmashell.service 2>/dev/null
     systemctl --user restart plasma-plasmashell.service'
 sleep 6
 shot=E:/AgentData/renneros-lab/vms/$VM/shots/T-${1:-push}.png

@@ -1,0 +1,16 @@
+{
+    "KPackageStructure": "Plasma/Applet",
+    "KPlugin": {
+        "Authors": [{ "Name": "renner.dev" }],
+        "Category": "Windows and Tasks",
+        "Description": "A slim edge at the end of the taskbar that shows the desktop",
+        "Description[de]": "Schmaler Rand am Ende der Taskleiste, der den Desktop zeigt",
+        "Icon": "user-desktop",
+        "Id": "dev.renner.showdesktop",
+        "License": "GPL-2.0-or-later",
+        "Name": "Show Desktop (renner.dev)",
+        "Name[de]": "Desktop anzeigen (renner.dev)",
+        "Version": "0.1"
+    },
+    "X-Plasma-API-Minimum-Version": "6.0"
+}

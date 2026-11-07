@@ -61,6 +61,14 @@ usr/share/plasma/look-and-feel/dev.renner.desktop/contents/layouts/org.kde.plasm
 usr/share/plasma/look-and-feel/dev.renner.desktop/contents/splash/Splash.qml
 usr/share/plasma/look-and-feel/dev.renner.desktop/contents/splash/images/mark.svg
 usr/share/plasma/look-and-feel/dev.renner.desktop/metadata.json
+usr/share/plasma/plasmoids/dev.renner.showdesktop/contents/ui/main.qml
+usr/share/plasma/plasmoids/dev.renner.showdesktop/metadata.json
+usr/share/plasma/plasmoids/dev.renner.start/contents/config/main.xml
+usr/share/plasma/plasmoids/dev.renner.start/contents/ui/AppGrid.qml
+usr/share/plasma/plasmoids/dev.renner.start/contents/ui/ItemRow.qml
+usr/share/plasma/plasmoids/dev.renner.start/contents/ui/Launcher.qml
+usr/share/plasma/plasmoids/dev.renner.start/contents/ui/main.qml
+usr/share/plasma/plasmoids/dev.renner.start/metadata.json
 usr/share/sddm/themes/breeze/theme.conf.user
 usr/share/wallpapers/renner/contents/images/3840x2160.png
 usr/share/wallpapers/renner/metadata.json
