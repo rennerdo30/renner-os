@@ -9,7 +9,8 @@ USER_NAME=${1:-tom}
 PASSWORD=${2:-pw1}
 L() { python lab/lab.py "$@"; }
 L exec $VM --wait-agent 240 -- true >/dev/null || { echo "FAILED: guest agent"; exit 1; }
-session() { L exec $VM -- sh -c "test -S /run/user/\$(id -u $USER_NAME)/wayland-0" 2>/dev/null; }
+# Logged in = the user's Plasma shell runs (socket names such as wayland-0/1 vary).
+session() { L exec $VM -- pgrep -u "$USER_NAME" -x plasmashell >/dev/null 2>&1; }
 session && { echo "already logged in"; exit 0; }
 # SDDM must be on screen before typing.
 for i in $(seq 1 60); do

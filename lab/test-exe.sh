@@ -18,10 +18,10 @@ uid=$(X id -u "$USER_NAME") || fail "no user $USER_NAME"
 # The desktop session must be up (Plasma imports its environment into the
 # user's systemd, which is where the program is started).
 for i in $(seq 1 60); do
-    X test -S "/run/user/$uid/wayland-0" && break
+    X pgrep -u "$USER_NAME" -x plasmashell >/dev/null && break
     sleep 2
 done
-X test -S "/run/user/$uid/wayland-0" || fail "no desktop session for $USER_NAME"
+X pgrep -u "$USER_NAME" -x plasmashell >/dev/null || fail "no desktop session for $USER_NAME"
 AS=(runuser -u "$USER_NAME" -- env "XDG_RUNTIME_DIR=/run/user/$uid" "DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/$uid/bus")
 
 echo "== download"
