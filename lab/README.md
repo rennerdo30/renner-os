@@ -42,6 +42,26 @@ python lab/lab.py down test1
 
 To watch along: connect any VNC viewer to the address `status` prints.
 
+## Arch ISO and package cache
+
+```
+python lab/lab.py iso                    # newest Arch ISO; two mirrors must agree on the SHA256
+python lab/lab.py up test1 --iso latest  # boots it; Enter is pressed for you (the ISO's
+                                         # boot menu countdown does not run under WHPX)
+python lab/lab.py use-cache test1        # in the booted live system: pacman -> local cache
+python lab/lab.py cache status           # hits, misses, size on disk
+```
+
+`up` starts the package cache automatically (`--no-cache` skips it). The cache
+(`lab/pkgcache.py`) listens on `127.0.0.1:8079` only; guests reach it as
+`http://10.0.2.2:8079`. Packages are downloaded from Arch once and then served
+from `E:/AgentData/renneros-lab/pkgcache/`. Package databases are always fetched
+fresh. pacman still checks every package signature. The cache stops itself after
+its time limit and records its PID like the VMs.
+
+Tested 2026-11-07: round 1 downloaded 12 packages (12 misses), and after the
+guest's cache was emptied, round 2 served all 12 from the local cache (12 hits).
+
 ## Limits
 
 - No real GPU: a VM tests boot, A/B updates, rollback, KDE and the exe

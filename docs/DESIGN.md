@@ -1,6 +1,6 @@
 # renner.dev OS: design
 
-Status: draft, 2026-11-07. Nothing has been built or booted yet.
+Status: draft, 2026-11-07. Only the test lab and two drafts exist; no OS code yet.
 
 ## Owner direction (2026-11-07)
 
@@ -8,89 +8,106 @@ Status: draft, 2026-11-07. Nothing has been built or booted yet.
 - **KDE Plasma** with a clean, prosumer theme.
 - **Automatic GPU driver setup for every vendor** (AMD, Intel, NVIDIA, hybrid laptops).
 - **"Native" Windows `.exe` support**: the tightest Wine/Proton integration possible at system level.
-- **Immutable root filesystem**, like SteamOS.
+- **Immutable root filesystem**, like SteamOS (as far as an install script allows; see below).
+- **Delivery, in three steps:**
+  1. **Install script only.** The user boots the official Arch ISO and runs our
+     web install script, which sets Arch up the way we want it. We do not
+     distribute our own ISO.
+  2. **Media creator.** A tool that takes the official Arch ISO and adapts it
+     on the user's own machine, so the stick boots straight into our installer.
+  3. **Our own ISO.**
 
 ## Architecture at a glance
 
 ```
-            CI (Arch container)                       User PC
- ┌────────────────────────────────────┐    ┌──────────────────────────────────┐
- │ mkosi builds a full Arch root      │    │ ESP: systemd-boot + UKIs (A, B)   │
- │  + renner packages (packages/)     │──▶ │ root-A  (erofs, read-only)        │
- │  -> root image + UKI per variant   │    │ root-B  (erofs, read-only)        │
- │  -> signed sysupdate artifacts     │    │ data    (btrfs: /var, /home,      │
- └────────────────────────────────────┘    │          /etc overlay upper)      │
-                                           └──────────────────────────────────┘
+ Official Arch ISO (booted by the user)
+   └─ curl -fsSL <renner.dev URL> | sh        (step 1)
+        ├─ partition + btrfs subvolumes
+        ├─ pacstrap: Arch packages from Arch mirrors
+        ├─ renner-os repo: our packages (theme, exe integration, GPU, updater)
+        ├─ GPU detection -> exactly the right driver packages
+        └─ bootloader with snapshot entries, read-only root
 ```
 
-### Immutable base (SteamOS-style A/B)
+Our own pieces ship as **packages in a small pacman repository (`renner-os`)**,
+signed with our key. The installer only adds that repo and installs a
+meta-package. That way every part of renner.dev OS updates through pacman like
+the rest of Arch, and the install script stays small.
 
-SteamOS 3 is Arch-based too. It uses two read-only root partitions, swaps
-them atomically on update and keeps `/etc`, `/var` and `/home` writable. We do
-the same with upstream systemd parts instead of a custom updater:
+### Install script (step 1)
 
-- **Build:** `mkosi` (supports `Distribution=arch`) builds the whole root from a
-  pinned Arch Linux Archive snapshot, so every image is reproducible and we
-  test a snapshot before users get it. That directly fixes Arch's "an update
-  broke my system" problem.
-- **Layout:** ESP, `root-A`, `root-B` (erofs, read-only, optionally dm-verity),
-  and one btrfs `data` partition for `/var`, `/home` and the `/etc` overlay upper
-  directory (the SteamOS approach for `/etc`).
-- **Updates:** `systemd-sysupdate` writes the new root into the inactive slot and
-  a matching UKI into the ESP. Boot counting in `systemd-boot` (boot assessment)
-  falls back to the previous slot automatically if the new one does not reach
-  `boot-complete.target`.
+- Runs on the official Arch ISO as root and asks only a few questions: disk,
+  user, password, timezone and locale with sensible defaults, then a summary
+  before anything is written.
+- Idempotent stages with a log (`/var/log/renner-install.log` on the target),
+  so a failed run can be read and resumed.
+- The script is downloaded over HTTPS and its signature is checked before it runs.
+  The one-liner fetches a small bootstrap that verifies the real installer.
+- Publishing the script and the repo needs the owner's yes (rules: releases and
+  publication).
+
+### Immutability with a script install
+
+True SteamOS-style A/B depends on shipping finished images, and step 1 does not.
+The closest match with plain Arch packages:
+
+- **Read-only root on btrfs, updates as a transaction** (recommended; owner
+  decision pending). `renner-update` snapshots the root, runs `pacman -Syu`
+  inside the new snapshot, and makes it the default for the next boot. The
+  running system never changes mid-update. The update is all or nothing.
+- **Every earlier state is a boot menu entry**, so rolling back is one pick at
+  boot. This is the openSUSE Aeon / `transactional-update` model.
+- `/etc` gets a 3-way merge on update; `/home` and `/var` stay writable
+  subvolumes outside the snapshots.
 - **Software for users:** Flatpak through Discover for apps; Distrobox (an Arch
-  container) for `pacman`/AUR and CLI tools; Windows software in Wine prefixes
-  under `/home`. `pacman` on the host root is read-only by design.
-- **Developer escape hatch:** `renner-os unlock` mounts a writable overlay on top of
-  the root until the next update (the SteamOS `steamos-readonly disable` equivalent).
+  container) for AUR and CLI tools; Windows software in Wine prefixes in
+  `/home`. Host `pacman` runs only through `renner-update`.
+- **Escape hatch:** `renner-os unlock` makes the current root writable until the
+  next update, for developers.
+- Simpler alternative, if the owner prefers it: a writable root plus automatic
+  snapshots before every update (like CachyOS). It is easier but not immutable.
 
-Open spike (phase 1): how each UKI pins its own root slot (partition label or
-verity root hash on the kernel command line), and the `/etc` 3-way merge on update.
+Steps 2 and 3 keep this layout, so an install from the media creator or our own
+ISO behaves the same.
 
 ### GPU drivers for every vendor
 
-On an immutable system we don't install drivers at runtime. The image already
-contains them, and detection picks the image **variant** and the runtime
-configuration:
+The installer detects the GPUs and installs exactly the right drivers. A boot
+check warns when the hardware changes later (for example a swapped GPU) and
+offers the fix; it never switches drivers silently.
 
-| Hardware | Driver | Image variant |
-| --- | --- | --- |
-| AMD | mesa (radeonsi, RADV), lib32 | `standard` |
-| Intel | mesa (iris, ANV), intel-media-driver, lib32 | `standard` |
-| NVIDIA Turing+ (RTX 20xx, GTX 16xx and newer) | `nvidia-open` + `nvidia-utils`, lib32 | `standard` |
-| NVIDIA Maxwell/Pascal/Volta | `nvidia-580xx` (legacy branch, AUR; we build it in CI) | `nvidia-legacy` |
-| NVIDIA Kepler and older | nouveau / NVK (mesa) | `standard` |
-| Hybrid (iGPU + NVIDIA dGPU) | above + `switcheroo-control`, PRIME offload | per dGPU |
+| Hardware | Driver packages |
+| --- | --- |
+| AMD | mesa (radeonsi, RADV), lib32 |
+| Intel | mesa (iris, ANV), intel-media-driver, lib32 |
+| NVIDIA Turing+ (RTX 20xx, GTX 16xx and newer) | `nvidia-open` + `nvidia-utils`, lib32 |
+| NVIDIA Maxwell/Pascal/Volta | `nvidia-580xx` (legacy branch, AUR; prebuilt in our repo) |
+| NVIDIA Kepler and older | nouveau / NVK (mesa) |
+| Hybrid (iGPU + NVIDIA dGPU) | above + `switcheroo-control`, PRIME offload |
 
 Since December 2025 Arch's main `nvidia` packages are the open kernel modules, and
 the 590 driver dropped Pascal and older. `nvidia-open` and `nvidia-580xx` both ship
-`nvidia.ko`, so they cannot be in one image. That is why there are two variants.
+`nvidia.ko`, so a machine gets one or the other. One legacy card moves the whole
+machine to the 580 branch, because it also drives newer GPUs.
 
-- `renner-gpu-detect` (in `packages/renner-gpu`) reads PCI display devices from
-  sysfs and the NVIDIA support lists that ship with each driver branch, then
-  prints the profile: variant, NVIDIA driver, hybrid flag.
-- The installer runs it and installs the matching variant. The update channel
-  follows the variant.
-- A boot service runs it again each boot. If the hardware no longer matches the
-  installed variant (for example a swapped GPU), it tells the user and offers
-  `renner-os variant <name>`. It never switches silently.
+`renner-gpu-detect` (draft in `packages/renner-gpu`, with tests) reads PCI display
+devices from sysfs and NVIDIA's own support lists, and prints the profile the
+installer acts on.
 
 ### Windows `.exe` as a first-class file type
 
 The aim: double-click (or `./app.exe`) runs it, with no prefix or runner choice in
-the way. `packages/renner-exe` does this:
+the way. `packages/renner-exe` (draft, never run) does this:
 
 1. **Kernel level:** a `binfmt_misc` rule (`MZ` magic) runs PE files through
    `renner-exe`, so `./setup.exe` in a terminal just works.
 2. **Desktop level:** `renner-exe.desktop` is the default handler for the exe, msi
    and lnk MIME types in KDE. Downloads don't need the exec bit for a double-click.
    Dolphin shows real exe icons through KDE's exe thumbnailer.
-3. **Runner:** `umu-launcher` with a Proton build pinned **in the OS image**
-   (`/usr/share/renner-os/proton/current`), so it works offline and the version
-   changes only with an OS update that we tested. The DXVK, VKD3D-Proton and
-   protonfixes layers come with it. Plain `wine` is the fallback.
+3. **Runner:** `umu-launcher` with a Proton build that we pin and ship as a
+   package in our repo, so it works offline and changes only with an update we
+   tested. The DXVK, VKD3D-Proton and protonfixes layers come with it. Plain
+   `wine` is the fallback.
 4. **Prefixes:** an exe inside an existing prefix (`…/drive_c/…`) runs in that
    prefix. Anything else uses the shared default prefix. "Run in its own prefix"
    is a Dolphin context-menu action. Prefixes live in
@@ -112,42 +129,51 @@ Direction: calm, dense, precise, like a pro tool and not a gaming RGB look.
 
 - Graphite neutrals (light and dark), **one** accent colour, no gradients, subtle
   1 px separators, 6 px radii, a tight but readable density.
-- Inter for the UI, JetBrains Mono for monospace (both OFL, bundled with the
-  image so there's no font fallback).
+- Inter for the UI, JetBrains Mono for monospace (both OFL, installed as
+  dependencies so there's no font fallback).
 - Floating bottom panel, icon-only task manager, centred launcher, system tray kept
   minimal. Breeze as the widget base with our colour scheme and Plasma style,
   packaged as a Plasma global theme (`renner-theme`) plus SDDM and splash.
 - Built as real design work (mockups first, owner sign-off), never as a stub.
 
+### Media creator (step 2)
+
+Takes the official Arch ISO (downloaded and signature-checked by the tool) and
+adapts it on the user's machine so the stick starts our installer. We never
+distribute a modified Arch ISO. To be designed when step 1 works.
+
+## Test lab
+
+QEMU directly on this Windows PC (owner 2026-11-07; never the owner's WSL
+distros or VMs). See `lab/README.md`. It includes a local pacman package cache
+so repeated test installs don't download every package again.
+
 ## Repository layout
 
 ```
 docs/DESIGN.md        this file
-packages/renner-gpu/  GPU detection (installer + boot check)
-packages/renner-exe/  Windows exe integration (binfmt, MIME, launcher, ntsync)
+install/              the install script (step 1, next)
+packages/renner-gpu/  GPU detection (draft with tests)
+packages/renner-exe/  Windows exe integration (draft, never run)
 tests/                offline tests that run on any machine
-lab/                  QEMU test lab on this PC (see lab/README.md)
-mkosi/                image definition (phase 1)
-
-`packages/` holds early drafts from before the plan settled: the GPU detector
-has tests, and `renner-exe` has never run. Both are reviewed again in their phase.
+lab/                  QEMU test lab and package cache
 ```
 
 ## Roadmap
 
-1. **Phase 0 (now):** design, GPU detection with tests, exe integration package.
-2. **Phase 1, bootable image:** mkosi config, A/B layout, VM tests in the
-   QEMU lab on this PC (`lab/`, owner 2026-11-07: QEMU on this PC, never the
-   owner's WSL distros or VMs), sysupdate between two builds, rollback test.
-3. **Phase 2, desktop:** Plasma with the theme, installer (Calamares or our own
-   KDE installer on top of `systemd-repart`), first-boot setup.
-4. **Phase 3, Windows apps:** pinned Proton in the image, the Windows apps KCM,
-   start-menu integration, a test matrix of real installers.
-5. **Phase 4, daily driver:** the update channel, `nvidia-legacy` variant builds,
-   Secure Boot (our own key, enrolled by the installer), and the owner moving
-   onto it as a daily driver.
+1. **Step 1, install script:** script on the official ISO, btrfs layout with
+   read-only root and `renner-update`, GPU drivers, Plasma, the `renner-os` repo
+   with our packages, Windows exe integration. Tested end to end in the lab.
+2. **Step 2, media creator** for the official Arch ISO.
+3. **Step 3, our own ISO.**
+
+Across all steps: the theme as real design work, Secure Boot (our own key,
+enrolled by the installer), and the owner moving onto it as a daily driver.
 
 ## Owner decisions still open
 
-- Repository hosting and visibility (public repos get GitHub-hosted CI runners for free).
+- Immutability model: read-only btrfs root with transactional updates
+  (recommended) or writable root with snapshots.
+- Where the script and the `renner-os` repo are hosted (publication needs the owner's yes).
+- Repository visibility for this project.
 - Final product name (whether "renner.dev OS" stays) and the accent colour.

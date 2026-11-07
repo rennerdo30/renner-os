@@ -13,25 +13,39 @@ and records its own PID; `down` stops only that PID.
   python lab/lab.py status
   python lab/lab.py down test1
 
-Lab data (QEMU, ISOs, disks, logs) lives outside the repo, in RENNER_LAB_DIR
-(default E:/AgentData/renneros-lab).
+  python lab/lab.py iso                   # fetch + verify the newest Arch ISO
+  python lab/lab.py up test1 --iso latest # boot the newest ISO in isos/
+  python lab/lab.py cache up|down|status  # local pacman cache (also started by `up`)
+  python lab/lab.py use-cache test1       # point a booted Arch live system at it
+
+Lab data (QEMU, ISOs, disks, logs, package cache) lives outside the repo, in
+RENNER_LAB_DIR (default E:/AgentData/renneros-lab).
 """
 
 from __future__ import annotations
 
 import argparse
 import ctypes
+import hashlib
 import json
 import os
+import re
+import secrets
 import socket
 import subprocess
 import sys
 import time
+import urllib.request
 from pathlib import Path
 
 LAB = Path(os.environ.get("RENNER_LAB_DIR", "E:/AgentData/renneros-lab"))
 QEMU_DIR = LAB / "qemu"
 VMS = LAB / "vms"
+ISOS = LAB / "isos"
+CACHE_STATE = LAB / "pkgcache.json"
+CACHE_PORT = 8079
+# Two independent mirrors must agree on the ISO checksum.
+ISO_MIRRORS = ("https://geo.mirror.pkgbuild.com", "https://mirror.rackspace.com/archlinux")
 QMP_PORT_BASE = 44400
 VNC_DISPLAY_BASE = 40  # VNC port 5900 + n, localhost only
 
@@ -224,8 +238,12 @@ def cmd_up(a) -> None:
         "-display", "sdl" if a.window else "none",
     ]
     if a.iso:
-        args += ["-drive", f"media=cdrom,format=raw,readonly=on,file={Path(a.iso).resolve()}",
+        args += ["-drive", f"media=cdrom,format=raw,readonly=on,file={resolve_iso(a.iso)}",
                  "-boot", "once=d"]
+    if not a.no_cache:  # keep the package cache alive at least as long as the VM
+        s = cache_up(a.minutes + 10)
+        if s["deadline"] < time.time() + a.minutes * 60:
+            print("note: the running cache stops before this VM; restart it with a longer --minutes")
     log = d / "qemu.log"
     log.write_text(" ".join(args) + "\n")
     pid = spawn_detached(args, log)
@@ -245,6 +263,15 @@ def cmd_up(a) -> None:
             break
         except OSError:
             time.sleep(0.2)
+    if a.iso:
+        # The ISO's systemd-boot countdown does not run under WHPX, so pick the
+        # default entry ourselves. A second Enter covers a slow firmware start
+        # and is ignored once the kernel is loading.
+        for delay in (6, 4):
+            time.sleep(delay)
+            q = Qmp(state["qmp_port"])
+            send_keys(q, ["ret"])
+            q.close()
     print(f"up: {a.name} pid={pid} limit={a.minutes} min "
           f"vnc=127.0.0.1:{5900 + state['vnc_display']} qmp={state['qmp_port']}")
 
@@ -349,6 +376,145 @@ def cmd_snap(a) -> None:
     print(f"{a.action} {a.tag}: ok")
 
 
+# --- Arch ISO -----------------------------------------------------------------
+
+
+def _fetch(url: str, timeout: int = 30) -> bytes:
+    req = urllib.request.Request(url, headers={"User-Agent": "renneros-lab"})
+    with urllib.request.urlopen(req, timeout=timeout) as resp:
+        return resp.read()
+
+
+def cmd_iso(a) -> None:
+    sums = {}
+    for mirror in ISO_MIRRORS:
+        text = _fetch(f"{mirror}/iso/latest/sha256sums.txt").decode()
+        m = re.search(r"^([0-9a-f]{64})\s+(archlinux-\d{4}\.\d{2}\.\d{2}-x86_64\.iso)$", text, re.M)
+        if not m:
+            sys.exit(f"lab: no ISO checksum in {mirror}")
+        sums[mirror] = (m.group(2), m.group(1))
+    if len(set(sums.values())) != 1:
+        sys.exit(f"lab: mirrors disagree on the latest ISO: {sums}")
+    name, digest = next(iter(sums.values()))
+    ISOS.mkdir(parents=True, exist_ok=True)
+    target = ISOS / name
+    if target.exists():
+        print(f"latest: {target} (already here)")
+        return
+    version = name.split("-")[1]
+    url = f"{ISO_MIRRORS[0]}/iso/{version}/{name}"
+    part = target.with_suffix(".iso.part")
+    h = hashlib.sha256()
+    print(f"downloading {url}")
+    req = urllib.request.Request(url, headers={"User-Agent": "renneros-lab"})
+    with urllib.request.urlopen(req, timeout=60) as resp, open(part, "wb") as out:
+        while chunk := resp.read(1 << 20):
+            out.write(chunk)
+            h.update(chunk)
+    if h.hexdigest() != digest:
+        part.unlink()
+        sys.exit(f"lab: checksum mismatch for {name}; download discarded")
+    part.replace(target)
+    print(f"latest: {target} (sha256 verified)")
+
+
+def resolve_iso(value: str) -> Path:
+    if value != "latest":
+        return Path(value).resolve()
+    isos = sorted(ISOS.glob("archlinux-*-x86_64.iso"))
+    if not isos:
+        sys.exit("lab: no ISO yet; run: lab.py iso")
+    return isos[-1]
+
+
+# --- package cache --------------------------------------------------------------
+
+
+def cache_state() -> dict | None:
+    if not CACHE_STATE.exists():
+        return None
+    s = json.loads(CACHE_STATE.read_text())
+    alive = s.get("pid") and pid_alive(s["pid"]) and pid_image(s["pid"]).startswith("python")
+    return s if alive else None
+
+
+def cache_up(minutes: int) -> dict:
+    s = cache_state()
+    if s:
+        return s
+    token = secrets.token_hex(16)
+    env_token = dict(os.environ, RENNER_PKGCACHE_TOKEN=token)
+    log = LAB / "pkgcache.log"
+    flags = 0x00000008 | 0x00000200 | 0x08000000 if os.name == "nt" else 0
+    with open(log, "ab") as fh:
+        proc = subprocess.Popen(
+            [sys.executable, str(Path(__file__).with_name("pkgcache.py")),
+             "--root", str(LAB / "pkgcache"), "--port", str(CACHE_PORT), "--minutes", str(minutes)],
+            stdin=subprocess.DEVNULL, stdout=fh, stderr=subprocess.STDOUT,
+            creationflags=flags, env=env_token, close_fds=True,
+        )
+    s = {"pid": proc.pid, "port": CACHE_PORT, "token": token, "deadline": time.time() + minutes * 60}
+    CACHE_STATE.write_text(json.dumps(s, indent=2))
+    for _ in range(50):
+        try:
+            _fetch(f"http://127.0.0.1:{CACHE_PORT}/_lab/stats", timeout=2)
+            break
+        except OSError:
+            if not pid_alive(proc.pid):
+                sys.exit(f"lab: package cache failed to start; see {log}")
+            time.sleep(0.2)
+    print(f"cache: up pid={proc.pid} http://127.0.0.1:{CACHE_PORT} (guests: http://10.0.2.2:{CACHE_PORT}) "
+          f"limit={minutes} min")
+    return s
+
+
+def cache_down() -> None:
+    s = cache_state()
+    if not s:
+        print("cache: not running")
+        return
+    try:
+        _fetch(f"http://127.0.0.1:{s['port']}/_lab/quit?token={s['token']}", timeout=5)
+    except OSError:
+        pass
+    for _ in range(50):
+        if not pid_alive(s["pid"]):
+            break
+        time.sleep(0.2)
+    else:
+        if pid_image(s["pid"]).startswith("python"):  # only our recorded PID
+            subprocess.run(["taskkill", "/PID", str(s["pid"]), "/F"], capture_output=True, timeout=15)
+    print("cache: down")
+
+
+def cmd_cache(a) -> None:
+    if a.action == "up":
+        cache_up(a.minutes)
+    elif a.action == "down":
+        cache_down()
+    else:
+        s = cache_state()
+        if not s:
+            print("cache: not running")
+            return
+        stats = _fetch(f"http://127.0.0.1:{s['port']}/_lab/stats", timeout=5).decode().strip()
+        left = max(0, int((s["deadline"] - time.time()) / 60))
+        size = sum(f.stat().st_size for f in (LAB / "pkgcache").rglob("*.pkg.tar.*"))
+        print(f"cache: running pid={s['pid']} {left} min left, {size / 1e9:.2f} GB cached, {stats}")
+
+
+def cmd_use_cache(a) -> None:
+    """Type the cache mirror into a booted Arch live system (root shell)."""
+    q = qmp_for(a.name)
+    line = (f"systemctl stop reflector.service; "
+            f"echo 'Server = http://10.0.2.2:{CACHE_PORT}/$repo/os/$arch' > /etc/pacman.d/mirrorlist")
+    for ch in line:
+        send_keys(q, char_keys(ch))
+    send_keys(q, ["ret"])
+    q.close()
+    print(f"{a.name}: pacman now uses http://10.0.2.2:{CACHE_PORT}")
+
+
 def main() -> None:
     p = argparse.ArgumentParser(description="renner.dev OS QEMU test lab")
     sub = p.add_subparsers(dest="cmd", required=True)
@@ -358,6 +524,7 @@ def main() -> None:
     s.add_argument("--minutes", type=int, default=30); s.add_argument("--cpus", type=int, default=4)
     s.add_argument("--mem", default="8G")
     s.add_argument("--window", action="store_true", help="visible window; only when the owner asks")
+    s.add_argument("--no-cache", action="store_true", help="don't start the package cache")
     s.set_defaults(f=cmd_up)
     s = sub.add_parser("down"); s.add_argument("name"); s.set_defaults(f=cmd_down)
     s = sub.add_parser("status"); s.set_defaults(f=cmd_status)
@@ -369,6 +536,12 @@ def main() -> None:
     s = sub.add_parser("snap", help="disk snapshots of a stopped VM")
     s.add_argument("name"); s.add_argument("action", choices=("save", "load", "delete", "list"))
     s.add_argument("tag", nargs="?"); s.set_defaults(f=cmd_snap)
+    s = sub.add_parser("iso", help="fetch and verify the newest Arch ISO"); s.set_defaults(f=cmd_iso)
+    s = sub.add_parser("cache", help="local pacman package cache")
+    s.add_argument("action", choices=("up", "down", "status"))
+    s.add_argument("--minutes", type=int, default=120); s.set_defaults(f=cmd_cache)
+    s = sub.add_parser("use-cache", help="point a booted Arch live system at the cache")
+    s.add_argument("name"); s.set_defaults(f=cmd_use_cache)
     s = sub.add_parser("_watchdog"); s.add_argument("name"); s.set_defaults(f=cmd_watchdog)
 
     a = p.parse_args()
