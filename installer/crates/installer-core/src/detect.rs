@@ -23,9 +23,33 @@ impl Disk {
     pub fn size_gib(&self) -> f64 {
         self.size_bytes as f64 / (1u64 << 30) as f64
     }
+    /// What kind of disk this is, in plain words.
+    pub fn kind(&self) -> &'static str {
+        match self.transport.as_str() {
+            "nvme" => "NVMe SSD",
+            "usb" => "USB drive",
+            "sata" | "ata" => "SATA disk",
+            "virtio" => "Virtual disk",
+            "mmc" => "Memory card",
+            _ => "Disk",
+        }
+    }
+    /// Size the way disks are sold (decimal GB/TB).
+    pub fn size_text(&self) -> String {
+        let gb = self.size_bytes as f64 / 1e9;
+        if gb >= 1000.0 { format!("{:.1} TB", gb / 1000.0) } else { format!("{gb:.0} GB") }
+    }
+    /// One line, e.g. "Samsung SSD 990 PRO · 2.0 TB" or "Virtual disk · 43 GB".
+    pub fn title(&self) -> String {
+        let name = if self.model.is_empty() { self.kind() } else { &self.model };
+        format!("{name} · {}", self.size_text())
+    }
+    /// Second line, e.g. "NVMe SSD · /dev/nvme0n1".
+    pub fn detail(&self) -> String {
+        format!("{} · {}", self.kind(), self.path)
+    }
     pub fn label(&self) -> String {
-        let model = if self.model.is_empty() { "Unknown disk" } else { &self.model };
-        format!("{model} ({:.0} GB, {})", self.size_bytes as f64 / 1e9, self.path)
+        format!("{} ({})", self.title(), self.path)
     }
     pub fn usable(&self) -> bool {
         !self.in_use && !self.install_medium && self.size_bytes >= crate::plan::MIN_DISK_BYTES
@@ -231,6 +255,8 @@ mod tests {
         assert!(disks[1].usable());
         assert!(!disks[2].usable(), "15 GiB is below the minimum");
         assert_eq!(disks[2].model, "Small NVMe");
+        assert_eq!(disks[1].title(), "Virtual disk · 43 GB");
+        assert_eq!(disks[2].detail(), "NVMe SSD · /dev/nvme0n1");
     }
 
     #[test]

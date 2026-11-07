@@ -1,52 +1,404 @@
-// renner.dev OS installer UI (PoC: function first; the final look comes with
-// the theme spec, RO-4). Runs on the plain Arch ISO through Slint's LinuxKMS
-// backend, and in a normal window elsewhere.
+// renner.dev OS installer.
+//
+// Brand: the renner.dev design language shared by the website
+// (renner.dev/src/styles/global.css), the launcher (renner-launcher
+// Assets/theme.json) and the platform sign-in theme (renner-platform
+// keycloak renner.css): blue-black surfaces, the orange accent with dark ink,
+// the orange-to-cyan edge, the dot grid and the r. brand mark.
+//
+// Input: fully usable with a keyboard only (Tab/Shift+Tab, Enter = next,
+// Esc = back, arrows in lists, visible focus ring) and with a mouse or
+// touchscreen only (large targets, built-in on-screen keyboard).
 
-import { Button, LineEdit, StandardListView, ProgressIndicator, ScrollView } from "std-widgets.slint";
 import "fonts/Inter-Regular.ttf";
 import "fonts/Inter-SemiBold.ttf";
+import "fonts/Inter-Bold.ttf";
 
-export global Palette {
-    out property <color> bg: #15171c;
-    out property <color> panel: #1e2128;
-    out property <color> line: #2c3039;
-    out property <color> text: #e8eaee;
-    out property <color> muted: #9aa1ad;
-    out property <color> accent: #4c8dff;
-    out property <color> danger: #ff6b6b;
+export struct DiskRow { title: string, detail: string }
+export struct PlanRow { label: string, value: string }
+
+export global Brand {
+    out property <color> bg: #08090f;
+    out property <color> surface: #0f111a;
+    out property <color> raised: #11131d;
+    out property <color> hover: #181b28;
+    out property <color> input: #0c0e16;
+    out property <color> line: #ffffff14;
+    out property <color> line-strong: #ffffff21;
+    out property <color> text: #f7f8fb;
+    out property <color> muted: #9ba5b9;
+    out property <color> faint: #8b95a8;
+    out property <color> accent: #ff7a1a;
+    out property <color> ink: #1c1207;
+    out property <color> cool: #2de2f0;
+    out property <color> focus: #7dd3fc;
+    out property <color> success: #3ddc97;
+    out property <color> danger: #ff5c7a;
+    out property <brush> accent-fill: @linear-gradient(135deg, #ff7a1a 0%, #ffa24c 100%);
+    out property <brush> edge: @linear-gradient(135deg, #ff7a1a 0%, #2de2f0 100%);
+    out property <brush> meter: @linear-gradient(90deg, #ff7a1a 0%, #ffb454 45%, #2de2f0 100%);
 }
 
-component Title inherits Text {
-    font-size: 26px;
-    font-weight: 600;
-    color: Palette.text;
+// The renner.dev mark: an orange rounded square with the r. glyph (paths from
+// the launcher's theme.json; glyph centred at 52 % like BrandMark.cs).
+component BrandMark inherits Rectangle {
+    in property <length> size: 36px;
+    width: size;
+    height: size;
+    Path {
+        width: 100%;
+        height: 100%;
+        viewbox-width: 64;
+        viewbox-height: 64;
+        commands: "M18 0h28a18 18 0 0 1 18 18v28a18 18 0 0 1-18 18H18A18 18 0 0 1 0 46V18A18 18 0 0 1 18 0z";
+        fill: Brand.accent-fill;
+    }
+    Path {
+        x: root.size * 0.24;
+        y: root.size * 0.24;
+        width: root.size * 0.52;
+        height: root.size * 0.52;
+        viewbox-x: 0;
+        viewbox-y: 6.4;
+        viewbox-width: 34;
+        viewbox-height: 33.6;
+        commands: "M0 7h9.5v5.2C12 8.4 16.2 6.4 22 6.4V16c-7.4 0-12.5 2.6-12.5 10.4V40H0z M26 32h8v8h-8z";
+        fill: Brand.ink;
+    }
 }
 
-component Body inherits Text {
-    font-size: 15px;
-    color: Palette.muted;
-    wrap: word-wrap;
+component Wordmark inherits HorizontalLayout {
+    in property <length> size: 22px;
+    spacing: 0;
+    alignment: start;
+    Text { text: "renner"; color: Brand.text; font-size: root.size; font-weight: 800; letter-spacing: -0.5px; }
+    Text { text: ".dev"; color: Brand.accent; font-size: root.size; font-weight: 800; letter-spacing: -0.5px; }
 }
 
-component Step inherits Text {
-    in property <bool> active;
-    in property <bool> done;
-    font-size: 14px;
-    font-weight: active ? 600 : 400;
-    color: active ? Palette.text : done ? Palette.muted : #5d6470;
+component FocusRing inherits Rectangle {
+    in property <bool> show;
+    in property <length> radius: 10px;
+    in property <length> target-width;
+    in property <length> target-height;
+    x: -5px;
+    y: -5px;
+    width: target-width + 10px;
+    height: target-height + 10px;
+    border-radius: radius + 5px;
+    border-width: 2px;
+    border-color: Brand.focus;
+    visible: show;
+}
+
+component PrimaryButton inherits Rectangle {
+    in property <string> text;
+    in property <bool> enabled: true;
+    callback clicked;
+    public function take-focus() { fs.focus(); }
+    min-width: 176px;
+    height: 52px;
+    border-radius: 10px;
+    background: Brand.accent-fill;
+    opacity: enabled ? 1 : 0.62;
+    drop-shadow-blur: !enabled ? 0 : touch.has-hover || fs.has-focus ? 34px : 24px;
+    drop-shadow-offset-y: 8px;
+    drop-shadow-color: #ff7a1a5c;
+    FocusRing { show: fs.has-focus; target-width: root.width; target-height: root.height; }
+    Text {
+        text: root.text;
+        color: Brand.ink;
+        font-size: 16px;
+        font-weight: 700;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+    }
+    fs := FocusScope {
+        enabled: root.enabled;
+        key-pressed(event) => {
+            if (event.text == Key.Return || event.text == " ") {
+                root.clicked();
+                return accept;
+            }
+            return reject;
+        }
+        touch := TouchArea {
+            enabled: root.enabled;
+            mouse-cursor: MouseCursor.pointer;
+            clicked => { root.clicked(); }
+        }
+    }
+}
+
+component SecondaryButton inherits Rectangle {
+    in property <string> text;
+    callback clicked;
+    min-width: 120px;
+    height: 52px;
+    border-radius: 10px;
+    background: touch.has-hover ? #ffffff14 : #ffffff0a;
+    border-width: 1px;
+    border-color: touch.has-hover ? Brand.cool : Brand.line-strong;
+    FocusRing { show: fs.has-focus; target-width: root.width; target-height: root.height; }
+    Text {
+        text: root.text;
+        color: Brand.text;
+        font-size: 16px;
+        font-weight: 600;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+    }
+    fs := FocusScope {
+        key-pressed(event) => {
+            if (event.text == Key.Return || event.text == " ") {
+                root.clicked();
+                return accept;
+            }
+            return reject;
+        }
+        touch := TouchArea {
+            mouse-cursor: MouseCursor.pointer;
+            clicked => { root.clicked(); }
+        }
+    }
+}
+
+// A labelled text field. A tap (mouse or touch) also asks for the on-screen
+// keyboard; Enter inside the field means "next".
+component Field inherits VerticalLayout {
+    in property <string> label;
+    in property <string> placeholder;
+    in property <bool> secret;
+    in-out property <string> text;
+    out property <bool> focused: input.has-focus;
+    callback accepted;
+    callback tapped;
+    public function take-focus() { input.focus(); }
+    spacing: 8px;
+    Text { text: root.label; color: Brand.muted; font-size: 14px; font-weight: 600; }
+    Rectangle {
+        height: 52px;
+        border-radius: 10px;
+        background: Brand.input;
+        border-width: 1px;
+        border-color: input.has-focus ? Brand.cool : Brand.line-strong;
+        Rectangle {
+            x: -4px;
+            y: -4px;
+            width: parent.width + 8px;
+            height: parent.height + 8px;
+            border-radius: 14px;
+            border-width: 4px;
+            border-color: #2de2f02e;
+            visible: input.has-focus;
+        }
+        Text {
+            x: 16px;
+            height: 100%;
+            vertical-alignment: center;
+            text: root.placeholder;
+            color: #8b95a888;
+            font-size: 16px;
+            visible: root.text == "";
+        }
+        input := TextInput {
+            x: 16px;
+            width: parent.width - 32px;
+            height: 100%;
+            vertical-alignment: center;
+            single-line: true;
+            text <=> root.text;
+            color: Brand.text;
+            font-size: 16px;
+            input-type: root.secret ? InputType.password : InputType.text;
+            selection-background-color: #ff7a1a66;
+            accepted => { root.accepted(); }
+        }
+        TouchArea {
+            mouse-cursor: MouseCursor.text;
+            clicked => {
+                input.focus();
+                root.tapped();
+            }
+        }
+    }
+}
+
+component DiskCard inherits Rectangle {
+    in property <string> title;
+    in property <string> detail;
+    in property <bool> selected;
+    callback picked;
+    height: 76px;
+    border-radius: 14px;
+    background: selected ? #ff7a1a12 : touch.has-hover ? Brand.hover : Brand.raised;
+    border-width: 1px;
+    border-color: selected ? Brand.accent : Brand.line;
+    drop-shadow-blur: selected ? 28px : 0;
+    drop-shadow-color: #ff7a1a33;
+    // drive icon
+    Rectangle {
+        x: 20px;
+        y: (parent.height - 36px) / 2;
+        width: 36px;
+        height: 36px;
+        border-radius: 9px;
+        background: selected ? #ff7a1a26 : #ffffff0d;
+        Rectangle {
+            x: 8px; y: 13px; width: 20px; height: 10px;
+            border-radius: 3px;
+            border-width: 2px;
+            border-color: selected ? Brand.accent : Brand.muted;
+        }
+    }
+    VerticalLayout {
+        x: 72px;
+        width: parent.width - 132px;
+        alignment: center;
+        spacing: 4px;
+        Text { text: root.title; color: Brand.text; font-size: 16px; font-weight: 600; }
+        Text { text: root.detail; color: Brand.faint; font-size: 13px; }
+    }
+    // selection mark
+    Rectangle {
+        x: parent.width - 44px;
+        y: (parent.height - 22px) / 2;
+        width: 22px;
+        height: 22px;
+        border-radius: 11px;
+        border-width: 2px;
+        border-color: selected ? Brand.accent : Brand.line-strong;
+        Rectangle {
+            x: 5px; y: 5px; width: 12px; height: 12px;
+            border-radius: 6px;
+            background: Brand.accent;
+            visible: root.selected;
+        }
+    }
+    touch := TouchArea {
+        mouse-cursor: MouseCursor.pointer;
+        clicked => { root.picked(); }
+    }
+}
+
+component StepItem inherits Rectangle {
+    in property <string> text;
+    in property <int> index;
+    in property <int> current;
+    property <bool> active: index == current;
+    property <bool> done: index < current;
+    height: 44px;
+    Rectangle {
+        x: 0;
+        y: (parent.height - 20px) / 2;
+        width: 3px;
+        height: 20px;
+        border-radius: 2px;
+        background: Brand.accent;
+        visible: root.active;
+    }
+    Rectangle {
+        x: 18px;
+        y: (parent.height - 26px) / 2;
+        width: 26px;
+        height: 26px;
+        border-radius: 13px;
+        background: root.done ? #3ddc971f : root.active ? #ff7a1a24 : transparent;
+        border-width: 1px;
+        border-color: root.done ? Brand.success : root.active ? Brand.accent : Brand.line-strong;
+        Text {
+            text: root.index + 1;
+            color: root.done ? Brand.success : root.active ? Brand.accent : Brand.faint;
+            font-size: 12px;
+            font-weight: 700;
+            horizontal-alignment: center;
+            vertical-alignment: center;
+        }
+    }
+    Text {
+        x: 58px;
+        height: 100%;
+        vertical-alignment: center;
+        text: root.text;
+        color: root.active ? Brand.text : root.done ? Brand.muted : Brand.faint;
+        font-size: 15px;
+        font-weight: root.active ? 600 : 400;
+    }
+}
+
+component OskKey inherits Rectangle {
+    in property <string> label;
+    in property <length> key-width: 64px;
+    in property <bool> strong;
+    callback pressed;
+    width: key-width;
+    height: 52px;
+    border-radius: 8px;
+    background: touch.pressed ? Brand.accent : strong ? #ffffff14 : touch.has-hover ? Brand.hover : Brand.raised;
+    border-width: 1px;
+    border-color: Brand.line;
+    Text {
+        text: root.label;
+        color: touch.pressed ? Brand.ink : Brand.text;
+        font-size: 18px;
+        font-weight: 600;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+    }
+    touch := TouchArea { clicked => { root.pressed(); } }
+}
+
+// On-screen keyboard for mouse- or touch-only use. It never takes focus, so
+// the field being edited keeps it.
+component OnScreenKeyboard inherits Rectangle {
+    callback typed(string);
+    callback done();
+    in-out property <bool> shift;
+    property <[string]> digits: ["1", "2", "3", "4", "5", "6", "7", "8", "9", "0"];
+    property <[string]> row1: shift ? ["Q", "W", "E", "R", "T", "Y", "U", "I", "O", "P"] : ["q", "w", "e", "r", "t", "y", "u", "i", "o", "p"];
+    property <[string]> row2: shift ? ["A", "S", "D", "F", "G", "H", "J", "K", "L"] : ["a", "s", "d", "f", "g", "h", "j", "k", "l"];
+    property <[string]> row3: shift ? ["Z", "X", "C", "V", "B", "N", "M"] : ["z", "x", "c", "v", "b", "n", "m"];
+    background: Brand.surface;
+    border-width: 1px;
+    border-color: Brand.line-strong;
+    VerticalLayout {
+        padding: 14px;
+        spacing: 8px;
+        alignment: center;
+        HorizontalLayout { spacing: 8px; alignment: center; for k in root.digits: OskKey { label: k; pressed => { root.typed(k); } } }
+        HorizontalLayout { spacing: 8px; alignment: center; for k in root.row1: OskKey { label: k; pressed => { root.typed(k); } } }
+        HorizontalLayout { spacing: 8px; alignment: center; for k in root.row2: OskKey { label: k; pressed => { root.typed(k); } } }
+        HorizontalLayout {
+            spacing: 8px;
+            alignment: center;
+            OskKey { label: "Shift"; key-width: 104px; strong: true; pressed => { root.shift = !root.shift; } }
+            for k in root.row3: OskKey { label: k; pressed => { root.typed(k); } }
+            OskKey { label: "Delete"; key-width: 104px; strong: true; pressed => { root.typed("\u{8}"); } }
+        }
+        HorizontalLayout {
+            spacing: 8px;
+            alignment: center;
+            OskKey { label: "-"; pressed => { root.typed("-"); } }
+            OskKey { label: "_"; pressed => { root.typed("_"); } }
+            OskKey { label: "."; pressed => { root.typed("."); } }
+            OskKey { label: "@"; pressed => { root.typed("@"); } }
+            OskKey { label: "Space"; key-width: 280px; pressed => { root.typed(" "); } }
+            OskKey { label: "Done"; key-width: 136px; strong: true; pressed => { root.done(); } }
+        }
+    }
 }
 
 export component InstallerWindow inherits Window {
     title: "renner.dev OS Setup";
     default-font-family: "Inter";
-    preferred-width: 1024px;
-    preferred-height: 720px;
-    background: Palette.bg;
+    preferred-width: 1280px;
+    preferred-height: 800px;
+    background: Brand.bg;
+    forward-focus: keys;
 
-    // 0 welcome, 1 disk, 2 user, 3 summary, 4 installing, 5 done, 6 failed
+    // 0 welcome, 1 disk, 2 account, 3 summary, 4 installing, 5 done, 6 failed
     in-out property <int> page: 0;
 
-    in property <[StandardListViewItem]> disk-labels;
+    in property <[DiskRow]> disks;
     in-out property <int> disk-index: -1;
     in property <string> disk-note;
 
@@ -55,165 +407,410 @@ export component InstallerWindow inherits Window {
     in-out property <string> password;
     in-out property <string> password2;
 
-    in property <string> plan-text;
+    in property <[PlanRow]> plan-rows;
+    in property <string> erase-warning;
     in property <string> error-text;
     in property <string> stage-text;
     in property <float> progress;
     in property <string> log-tail;
 
-    callback make-plan();     // validates the user page and builds the plan
+    // On-screen keyboard: which field it types into (0 user, 1 computer,
+    // 2 password, 3 repeat) and whether it is shown.
+    in-out property <int> osk-target: 0;
+    in-out property <bool> osk-visible;
+
+    callback make-plan();
     callback start-install();
     callback reboot();
+    callback osk-typed(int, string);
 
-    HorizontalLayout {
-        // Left: the steps, like a classic installer.
-        Rectangle {
-            width: 240px;
-            background: Palette.panel;
-            VerticalLayout {
-                padding: 28px;
-                spacing: 18px;
-                alignment: start;
-                Text {
-                    text: "renner.dev OS";
-                    font-size: 20px;
-                    font-weight: 600;
-                    color: Palette.text;
+    function go-next() {
+        if (page == 0) { page = 1; }
+        else if (page == 1) { if (disk-index >= 0) { page = 2; } }
+        else if (page == 2) { osk-visible = false; make-plan(); }
+        else if (page == 3) { start-install(); }
+        else if (page == 5) { reboot(); }
+    }
+    function go-back() {
+        if (osk-visible) { osk-visible = false; }
+        else if (page >= 1 && page <= 3) { page -= 1; }
+    }
+    function focus-page() {
+        if (page == 0) { next-button.take-focus(); }
+        else if (page == 1) { disk-keys.focus(); }
+        else if (page == 2) { user-field.take-focus(); }
+        else if (page == 3 || page == 5) { next-button.take-focus(); }
+        else { keys.focus(); }
+    }
+    changed page => { focus-page(); }
+    init => { focus-page(); }
+
+    // Background: dot grid fading downwards, warm and cool glows.
+    Image {
+        width: 100%;
+        height: 100%;
+        source: @image-url("images/dot-grid.png");
+        horizontal-tiling: repeat;
+        vertical-tiling: repeat;
+    }
+    Rectangle {
+        width: 100%;
+        height: 100%;
+        background: @linear-gradient(180deg, #08090f00 0%, #08090fcc 55%, #08090f 100%);
+    }
+    Rectangle {
+        x: -root.width * 0.15;
+        y: -root.height * 0.35;
+        width: root.width * 0.7;
+        height: root.height * 0.9;
+        background: @radial-gradient(circle, #ff7a1a2e 0%, #ff7a1a00 70%);
+    }
+    Rectangle {
+        x: root.width * 0.55;
+        y: root.height * 0.45;
+        width: root.width * 0.7;
+        height: root.height * 0.9;
+        background: @radial-gradient(circle, #2de2f01f 0%, #2de2f000 70%);
+    }
+
+    // Global keys: Enter = next, Esc = back (after the focused control).
+    keys := FocusScope {
+        key-pressed(event) => {
+            if (event.text == Key.Escape) { root.go-back(); return accept; }
+            if (event.text == Key.Return) { root.go-next(); return accept; }
+            return reject;
+        }
+
+        // The card with the 1px orange-to-cyan edge (platform sign-in card).
+        edge := Rectangle {
+            property <length> w: min(root.width - 48px, 1100px);
+            property <length> h: min(root.height - 48px, 680px);
+            width: w;
+            height: h;
+            x: (root.width - w) / 2;
+            y: root.osk-visible ? 24px : (root.height - h) / 2;
+            border-radius: 22px;
+            background: Brand.edge;
+            drop-shadow-blur: 72px;
+            drop-shadow-offset-y: 32px;
+            drop-shadow-color: #000000cc;
+            animate y { duration: 200ms; easing: ease-out; }
+
+            Rectangle {
+                x: 1px;
+                y: 1px;
+                width: parent.width - 2px;
+                height: parent.height - 2px;
+                border-radius: 21px;
+                background: Brand.raised;
+                clip: true;
+
+                HorizontalLayout {
+                    // Left rail: brand and steps.
+                    Rectangle {
+                        width: 280px;
+                        background: Brand.surface;
+                        Rectangle { x: parent.width - 1px; width: 1px; background: Brand.line; }
+                        VerticalLayout {
+                            padding: 32px;
+                            spacing: 6px;
+                            alignment: start;
+                            HorizontalLayout {
+                                spacing: 12px;
+                                alignment: start;
+                                BrandMark { size: 40px; }
+                                VerticalLayout {
+                                    alignment: center;
+                                    spacing: 2px;
+                                    Wordmark { size: 21px; }
+                                    Text { text: "OS Setup"; color: Brand.muted; font-size: 13px; font-weight: 600; }
+                                }
+                            }
+                            Rectangle { height: 36px; }
+                            StepItem { text: "Welcome"; index: 0; current: min(root.page, 4); }
+                            StepItem { text: "Disk"; index: 1; current: min(root.page, 4); }
+                            StepItem { text: "Your account"; index: 2; current: min(root.page, 4); }
+                            StepItem { text: "Summary"; index: 3; current: min(root.page, 4); }
+                            StepItem { text: "Install"; index: 4; current: root.page >= 5 ? 5 : min(root.page, 4); }
+                        }
+                    }
+
+                    // Right: the page.
+                    VerticalLayout {
+                        padding: 44px;
+                        padding-bottom: 36px;
+                        spacing: 0;
+
+                        // Page 0: welcome
+                        VerticalLayout {
+                            visible: root.page == 0;
+                            height: root.page == 0 ? self.preferred-height : 0;
+                            spacing: 14px;
+                            Text { text: "WELCOME"; color: Brand.cool; font-size: 12px; font-weight: 600; letter-spacing: 1.4px; }
+                            Text { text: "Install renner.dev OS"; color: Brand.text; font-size: 38px; font-weight: 800; letter-spacing: -1px; }
+                            Text {
+                                text: "A fast, calm desktop that stays out of your way. It takes about ten minutes.";
+                                color: Brand.muted; font-size: 17px; wrap: word-wrap;
+                            }
+                            Rectangle { height: 12px; }
+                            for item in [
+                                "KDE Plasma, set up and ready to use",
+                                "Updates that cannot break your system: every version can be rolled back",
+                                "Graphics drivers picked for your hardware",
+                            ]: HorizontalLayout {
+                                spacing: 14px;
+                                Rectangle {
+                                    width: 8px; height: 8px; y: 8px;
+                                    border-radius: 4px;
+                                    background: Brand.accent;
+                                }
+                                Text { text: item; color: Brand.text; font-size: 16px; wrap: word-wrap; }
+                            }
+                            Rectangle { height: 16px; }
+                            Text {
+                                text: "You need a disk of 32 GB or more that may be erased, and an internet connection.";
+                                color: Brand.faint; font-size: 14px; wrap: word-wrap;
+                            }
+                        }
+
+                        // Page 1: disk
+                        VerticalLayout {
+                            visible: root.page == 1;
+                            height: root.page == 1 ? self.preferred-height : 0;
+                            spacing: 14px;
+                            Text { text: "STEP 2 OF 5"; color: Brand.cool; font-size: 12px; font-weight: 600; letter-spacing: 1.4px; }
+                            Text { text: "Where should it go?"; color: Brand.text; font-size: 32px; font-weight: 800; letter-spacing: -0.8px; }
+                            Text { text: "The disk you choose is erased completely."; color: Brand.muted; font-size: 16px; }
+                            Rectangle { height: 6px; }
+                            disk-keys := FocusScope {
+                                key-pressed(event) => {
+                                    if (event.text == Key.DownArrow && root.disk-index < root.disks.length - 1) {
+                                        root.disk-index += 1;
+                                        return accept;
+                                    }
+                                    if (event.text == Key.UpArrow && root.disk-index > 0) {
+                                        root.disk-index -= 1;
+                                        return accept;
+                                    }
+                                    return reject;
+                                }
+                                VerticalLayout {
+                                    spacing: 10px;
+                                    for disk[i] in root.disks: DiskCard {
+                                        title: disk.title;
+                                        detail: disk.detail;
+                                        selected: i == root.disk-index;
+                                        picked => { root.disk-index = i; }
+                                    }
+                                }
+                                FocusRing { show: disk-keys.has-focus; radius: 14px; target-width: disk-keys.width; target-height: disk-keys.height; }
+                            }
+                            Text { text: root.disk-note; color: Brand.faint; font-size: 13px; wrap: word-wrap; }
+                        }
+
+                        // Page 2: account
+                        VerticalLayout {
+                            visible: root.page == 2;
+                            height: root.page == 2 ? self.preferred-height : 0;
+                            spacing: 14px;
+                            Text { text: "STEP 3 OF 5"; color: Brand.cool; font-size: 12px; font-weight: 600; letter-spacing: 1.4px; }
+                            Text { text: "Create your account"; color: Brand.text; font-size: 32px; font-weight: 800; letter-spacing: -0.8px; }
+                            Text { text: "This account can install software and change settings."; color: Brand.muted; font-size: 16px; }
+                            Rectangle { height: 6px; }
+                            GridLayout {
+                                spacing-horizontal: 18px;
+                                spacing-vertical: 16px;
+                                Row {
+                                    user-field := Field {
+                                        label: "User name";
+                                        placeholder: "e.g. alex";
+                                        text <=> root.username;
+                                        accepted => { root.go-next(); }
+                                        tapped => { root.osk-target = 0; root.osk-visible = true; }
+                                    }
+                                    Field {
+                                        label: "Computer name";
+                                        text <=> root.hostname;
+                                        accepted => { root.go-next(); }
+                                        tapped => { root.osk-target = 1; root.osk-visible = true; }
+                                    }
+                                }
+                                Row {
+                                    Field {
+                                        label: "Password";
+                                        secret: true;
+                                        text <=> root.password;
+                                        accepted => { root.go-next(); }
+                                        tapped => { root.osk-target = 2; root.osk-visible = true; }
+                                    }
+                                    Field {
+                                        label: "Repeat password";
+                                        secret: true;
+                                        text <=> root.password2;
+                                        accepted => { root.go-next(); }
+                                        tapped => { root.osk-target = 3; root.osk-visible = true; }
+                                    }
+                                }
+                            }
+                        }
+
+                        // Page 3: summary
+                        VerticalLayout {
+                            visible: root.page == 3;
+                            height: root.page == 3 ? self.preferred-height : 0;
+                            spacing: 14px;
+                            Text { text: "STEP 4 OF 5"; color: Brand.cool; font-size: 12px; font-weight: 600; letter-spacing: 1.4px; }
+                            Text { text: "Ready to install"; color: Brand.text; font-size: 32px; font-weight: 800; letter-spacing: -0.8px; }
+                            Rectangle {
+                                border-radius: 10px;
+                                background: #ff5c7a14;
+                                border-width: 1px;
+                                border-color: #ff5c7a59;
+                                HorizontalLayout {
+                                    padding: 14px;
+                                    spacing: 12px;
+                                    Rectangle {
+                                        width: 22px; height: 22px;
+                                        border-radius: 11px;
+                                        background: Brand.danger;
+                                        Text { text: "!"; color: Brand.bg; font-size: 14px; font-weight: 800; horizontal-alignment: center; vertical-alignment: center; }
+                                    }
+                                    Text { text: root.erase-warning; color: Brand.text; font-size: 15px; wrap: word-wrap; vertical-alignment: center; }
+                                }
+                            }
+                            Rectangle {
+                                border-radius: 14px;
+                                background: Brand.surface;
+                                border-width: 1px;
+                                border-color: Brand.line;
+                                VerticalLayout {
+                                    padding: 18px;
+                                    spacing: 10px;
+                                    for row in root.plan-rows: HorizontalLayout {
+                                        spacing: 16px;
+                                        Text { width: 130px; text: row.label; color: Brand.faint; font-size: 14px; }
+                                        Text { text: row.value; color: Brand.text; font-size: 14px; wrap: word-wrap; }
+                                    }
+                                }
+                            }
+                        }
+
+                        // Pages 4-6: installing, done, failed
+                        VerticalLayout {
+                            visible: root.page >= 4;
+                            height: root.page >= 4 ? self.preferred-height : 0;
+                            spacing: 14px;
+                            Text {
+                                text: root.page == 4 ? "STEP 5 OF 5" : root.page == 5 ? "ALL DONE" : "SOMETHING WENT WRONG";
+                                color: root.page == 6 ? Brand.danger : root.page == 5 ? Brand.success : Brand.cool;
+                                font-size: 12px; font-weight: 600; letter-spacing: 1.4px;
+                            }
+                            Text {
+                                text: root.page == 4 ? "Installing renner.dev OS" : root.page == 5 ? "renner.dev OS is ready" : "The install did not finish";
+                                color: Brand.text; font-size: 32px; font-weight: 800; letter-spacing: -0.8px;
+                            }
+                            Text {
+                                text: root.page == 4 ? root.stage-text
+                                    : root.page == 5 ? "Remove the install medium, then restart into your new system."
+                                    : root.error-text;
+                                color: root.page == 6 ? Brand.danger : Brand.muted;
+                                font-size: 16px;
+                                wrap: word-wrap;
+                            }
+                            HorizontalLayout {
+                                spacing: 14px;
+                                Rectangle {
+                                    height: 8px;
+                                    y: 6px;
+                                    border-radius: 4px;
+                                    background: #ffffff0f;
+                                    Rectangle {
+                                        x: 0;
+                                        width: parent.width * root.progress;
+                                        border-radius: 4px;
+                                        background: root.page == 6 ? Brand.danger : Brand.meter;
+                                        animate width { duration: 320ms; easing: ease-out; }
+                                    }
+                                }
+                                Text {
+                                    width: 52px;
+                                    text: round(root.progress * 100) + " %";
+                                    color: Brand.muted;
+                                    font-size: 14px;
+                                    font-weight: 600;
+                                    horizontal-alignment: right;
+                                }
+                            }
+                            Rectangle {
+                                height: 260px;
+                                border-radius: 12px;
+                                background: Brand.input;
+                                border-width: 1px;
+                                border-color: Brand.line;
+                                clip: true;
+                                Text {
+                                    x: 16px;
+                                    y: 12px;
+                                    width: parent.width - 32px;
+                                    text: root.log-tail;
+                                    color: Brand.faint;
+                                    font-size: 12px;
+                                    wrap: word-wrap;
+                                }
+                            }
+                        }
+
+                        Rectangle { vertical-stretch: 1; }
+
+                        Text {
+                            text: root.page < 4 ? root.error-text : "";
+                            color: Brand.danger;
+                            font-size: 14px;
+                            wrap: word-wrap;
+                        }
+                        Rectangle { height: root.page < 4 && root.error-text != "" ? 12px : 0; }
+
+                        // Navigation
+                        HorizontalLayout {
+                            spacing: 14px;
+                            alignment: end;
+                            height: root.page == 4 || root.page == 6 ? 0 : 52px;
+                            visible: root.page != 4 && root.page != 6;
+                            SecondaryButton {
+                                text: "Back";
+                                visible: root.page >= 1 && root.page <= 3;
+                                width: root.page >= 1 && root.page <= 3 ? self.min-width : 0;
+                                clicked => { root.go-back(); }
+                            }
+                            next-button := PrimaryButton {
+                                text: root.page == 3 ? "Erase disk and install" : root.page == 5 ? "Restart now" : "Next";
+                                enabled: root.page != 1 || root.disk-index >= 0;
+                                width: root.page == 3 ? 240px : self.min-width;
+                                clicked => { root.go-next(); }
+                            }
+                        }
+                    }
                 }
-                Rectangle { height: 8px; }
-                Step { text: "Welcome"; active: page == 0; done: page > 0; }
-                Step { text: "Disk"; active: page == 1; done: page > 1; }
-                Step { text: "Your account"; active: page == 2; done: page > 2; }
-                Step { text: "Summary"; active: page == 3; done: page > 3; }
-                Step { text: "Install"; active: page >= 4; done: page == 5; }
             }
         }
 
-        // Right: the current page.
-        VerticalLayout {
-            padding: 40px;
-            spacing: 18px;
+        // Footer: keyboard hints, so keyboard-only users know the keys.
+        Text {
+            x: (root.width - self.width) / 2;
+            y: root.height - 30px;
+            visible: !root.osk-visible;
+            text: "Tab  move   ·   Enter  next   ·   Esc  back";
+            color: #8b95a899;
+            font-size: 12px;
+        }
 
-            if page == 0: VerticalLayout {
-                spacing: 16px;
-                alignment: start;
-                Title { text: "Welcome"; }
-                Body { text: "This installs renner.dev OS on this computer: an Arch-based desktop with KDE Plasma, a read-only system that updates safely, and automatic graphics drivers.\n\nYou need a disk of at least 32 GB that may be erased, and an internet connection."; }
-            }
-
-            if page == 1: VerticalLayout {
-                spacing: 12px;
-                Title { text: "Where should renner.dev OS go?"; }
-                Body { text: "The selected disk is erased completely."; }
-                StandardListView {
-                    min-height: 260px;
-                    model: root.disk-labels;
-                    current-item <=> root.disk-index;
-                }
-                Body { text: root.disk-note; }
-            }
-
-            if page == 2: VerticalLayout {
-                spacing: 10px;
-                alignment: start;
-                Title { text: "Your account"; }
-                Body { text: "This account can install software and change settings."; }
-                Text { text: "User name"; color: Palette.text; font-size: 14px; }
-                LineEdit { text <=> root.username; placeholder-text: "e.g. alex"; }
-                Text { text: "Password"; color: Palette.text; font-size: 14px; }
-                LineEdit { text <=> root.password; input-type: InputType.password; }
-                Text { text: "Repeat password"; color: Palette.text; font-size: 14px; }
-                LineEdit { text <=> root.password2; input-type: InputType.password; }
-                Text { text: "Computer name"; color: Palette.text; font-size: 14px; }
-                LineEdit { text <=> root.hostname; }
-            }
-
-            if page == 3: VerticalLayout {
-                spacing: 12px;
-                Title { text: "Ready to install"; }
-                Body { text: "Check the plan. Nothing has been changed yet."; }
-                ScrollView {
-                    min-height: 300px;
-                    Text {
-                        text: root.plan-text;
-                        font-family: "Inter";
-                        font-size: 14px;
-                        color: Palette.text;
-                        wrap: word-wrap;
-                    }
-                }
-            }
-
-            if page == 4 || page == 5 || page == 6: VerticalLayout {
-                spacing: 14px;
-                Title { text: page == 4 ? "Installing" : page == 5 ? "Done" : "The install failed"; }
-                Body {
-                    text: page == 5 ? "renner.dev OS is installed. Remove the install medium and restart."
-                        : page == 6 ? "Nothing is lost on other disks. The log is in /tmp/renner-install.log."
-                        : root.stage-text;
-                }
-                ProgressIndicator { progress: root.progress; height: 8px; }
-                Rectangle {
-                    background: Palette.panel;
-                    border-radius: 6px;
-                    min-height: 280px;
-                    clip: true;
-                    Text {
-                        x: 12px; y: 10px;
-                        width: parent.width - 24px;
-                        text: root.log-tail;
-                        font-size: 12px;
-                        color: Palette.muted;
-                        wrap: word-wrap;
-                    }
-                }
-            }
-
-            Rectangle { vertical-stretch: 1; }
-
-            Text {
-                text: root.error-text;
-                color: Palette.danger;
-                font-size: 14px;
-                wrap: word-wrap;
-                visible: root.error-text != "";
-            }
-
-            // Navigation
-            HorizontalLayout {
-                spacing: 12px;
-                alignment: end;
-                if page >= 1 && page <= 3: Button {
-                    text: "Back";
-                    clicked => { root.page -= 1; }
-                }
-                if page == 0: Button {
-                    text: "Next";
-                    primary: true;
-                    clicked => { root.page = 1; }
-                }
-                if page == 1: Button {
-                    text: "Next";
-                    primary: true;
-                    enabled: root.disk-index >= 0;
-                    clicked => { root.page = 2; }
-                }
-                if page == 2: Button {
-                    text: "Next";
-                    primary: true;
-                    clicked => { root.make-plan(); }
-                }
-                if page == 3: Button {
-                    text: "Erase disk and install";
-                    primary: true;
-                    clicked => { root.start-install(); }
-                }
-                if page == 5: Button {
-                    text: "Restart now";
-                    primary: true;
-                    clicked => { root.reboot(); }
-                }
-            }
+        if root.osk-visible && root.page == 2: OnScreenKeyboard {
+            x: 0;
+            y: root.height - self.height;
+            width: root.width;
+            height: 330px;
+            typed(key) => { root.osk-typed(root.osk-target, key); }
+            done => { root.osk-visible = false; }
         }
     }
 }

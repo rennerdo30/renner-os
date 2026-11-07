@@ -58,6 +58,32 @@ pub fn build(config: &InstallConfig, inventory: &Inventory, resolved_device: &st
     })
 }
 
+impl Plan {
+    /// The plan as label/value rows for the graphical summary page.
+    pub fn rows(&self) -> Vec<(String, String)> {
+        let c = &self.config;
+        let mut rows = vec![
+            ("Disk".to_string(), format!("{} ({})", self.disk.title(), self.disk.path)),
+            ("Computer name".to_string(), c.system.hostname.clone()),
+            ("Account".to_string(), format!("{} (administrator)", c.user.name)),
+            ("Region".to_string(), format!("{} · {} · keyboard {}", c.system.timezone, c.system.locale, c.system.keymap)),
+        ];
+        if c.options.desktop {
+            rows.push(("Desktop".to_string(), "KDE Plasma".to_string()));
+            rows.push(("Graphics".to_string(), self.gpu_summary.clone()));
+        } else {
+            rows.push(("Desktop".to_string(), "None (console system)".to_string()));
+        }
+        rows.push(("System".to_string(), "Read-only, with safe updates and rollback".to_string()));
+        rows
+    }
+
+    /// The one-line erase warning for the summary page.
+    pub fn erase_warning(&self) -> String {
+        format!("Everything on {} ({}) will be erased.", self.disk.title(), self.disk.path)
+    }
+}
+
 impl fmt::Display for Plan {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let c = &self.config;
