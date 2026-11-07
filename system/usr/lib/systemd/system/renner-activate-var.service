@@ -3,7 +3,10 @@ Description=renner.dev OS deployment activation: package files in /var
 Documentation=https://github.com/rennerdo30/renner-os
 DefaultDependencies=no
 RequiresMountsFor=/var
-After=local-fs.target
+# Files owned by staged system accounts are only created when the account
+# step succeeded: Requires= plus After= means a failed account step stops this.
+Requires=renner-activate-accounts.service
+After=local-fs.target renner-activate-accounts.service
 Before=systemd-tmpfiles-setup.service sysinit.target shutdown.target
 Conflicts=shutdown.target
 

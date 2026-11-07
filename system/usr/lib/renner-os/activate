@@ -1,81 +1,134 @@
 #!/usr/bin/env bash
-# renner.dev OS: activate a deployment (renner-activate-accounts.service and
+# renner.dev OS: activate a deployment at boot (renner-activate-accounts.service,
 # renner-activate-var.service).
 #
-# renner-update stages everything inside the new deployment and never touches
-# the live system. At boot this script applies, additively:
-#   activate accounts  (before systemd-sysusers; needs only /etc, which the
-#                       initramfs mounts): system groups and users that the
-#                       deployment's own /etc (the lower layer of the /etc
-#                       overlay) has but the live /etc lacks, with exactly the
-#                       IDs allocated during staging. Idempotent, every boot.
-#   activate var       (after local-fs.target, before systemd-tmpfiles-setup):
-#                       files that packages ship under /var, copied into the
-#                       shared /var without overwriting anything. Once per
-#                       deployment (stamp in /var/lib/renner-os/activated).
-# Nothing is removed or changed, so a rollback stays safe. A conflict (an ID
-# taken by a different name) fails the unit, and renner-boot-health then
-# withholds the boot-counting "good" mark, so the deployment falls back.
+# renner-update stages a transaction inside the new deployment and never touches
+# the live system. It records what the transaction adds in a manifest:
+#   /usr/lib/renner-os/activation/accounts.group   group lines packages added
+#   /usr/lib/renner-os/activation/accounts.passwd  passwd lines packages added
+#   /usr/lib/renner-os/activation/var.paths        package-owned paths in /var
+# Only the manifest is applied, never the account databases as a whole, so
+# local users that were deleted or renamed stay that way.
+#
+#   activate accounts  before systemd-sysusers, every boot (idempotent). All
+#                      names and IDs are checked first: an existing name must
+#                      have the staged IDs, a missing one needs free IDs. Any
+#                      conflict fails the unit before anything is changed.
+#   activate var       after the accounts step succeeded (the unit requires it),
+#                      once per deployment. Creates the manifest's paths that
+#                      do not exist yet in the shared /var, with the staged
+#                      owner, mode and timestamps. Existing files and
+#                      directories are never touched: /var is state, so package
+#                      files there are seeded once and never updated.
+# A failed unit keeps renner-boot-health from marking the deployment good,
+# so boot counting falls back to the previous one.
 set -Eeuo pipefail
 
 mode=${1:-}
+manifest=/usr/lib/renner-os/activation
 id=$(grep -o 'subvol=/\?@deployments/[0-9]*' /proc/cmdline | grep -o '[0-9]*$' || true)
 [[ -n $id ]] || { echo "renner-activate: not a renner.dev OS deployment"; exit 0; }
 
-# A non-recursive bind of / shows what the overlays and mounts hide: the
-# deployment's own /etc and /var directories.
-view=/run/renner/deployment-$mode
-mkdir -p "$view"
-mountpoint -q "$view" || mount --bind -o ro / "$view"
-trap 'umount "$view" 2>/dev/null || true; rmdir "$view" 2>/dev/null || true' EXIT
-
 activate_accounts() {
-    local conflicts=0 name gid uid gecos home shell args
-    while IFS=: read -r name _ gid _; do
-        [[ -n $name ]] || continue
-        getent group "$name" >/dev/null && continue
-        if getent group "$gid" >/dev/null; then
-            echo "renner-activate: group $name needs GID $gid, which is taken" >&2
-            conflicts=1
-            continue
-        fi
+    local groups=$manifest/accounts.group users=$manifest/accounts.passwd
+    local name gid uid gecos home shell live conflicts=0
+    local -a add_groups=() add_users=()
+
+    # 1. Check everything first.
+    if [[ -s $groups ]]; then
+        while IFS=: read -r name _ gid _; do
+            [[ -n $name ]] || continue
+            if live=$(getent group "$name"); then
+                [[ $(cut -d: -f3 <<<"$live") == "$gid" ]] && continue
+                echo "renner-activate: group $name has GID $(cut -d: -f3 <<<"$live"), staged $gid" >&2
+                conflicts=1
+            elif getent group "$gid" >/dev/null; then
+                echo "renner-activate: group $name needs GID $gid, which another group has" >&2
+                conflicts=1
+            else
+                add_groups+=("$name:$gid")
+            fi
+        done <"$groups"
+    fi
+    if [[ -s $users ]]; then
+        while IFS=: read -r name _ uid gid gecos home shell; do
+            [[ -n $name ]] || continue
+            if live=$(getent passwd "$name"); then
+                [[ $(cut -d: -f3,4 <<<"$live") == "$uid:$gid" ]] && continue
+                echo "renner-activate: user $name has $(cut -d: -f3,4 <<<"$live"), staged $uid:$gid" >&2
+                conflicts=1
+            elif getent passwd "$uid" >/dev/null; then
+                echo "renner-activate: user $name needs UID $uid, which another user has" >&2
+                conflicts=1
+            else
+                add_users+=("$name:$uid:$gid:$gecos:$home:$shell")
+            fi
+        done <"$users"
+    fi
+    if ((conflicts)); then
+        echo "renner-activate: conflicts found; nothing was changed" >&2
+        return 1
+    fi
+
+    # 2. Apply. groupadd/useradd take the shadow-utils locks.
+    local entry args
+    for entry in "${add_groups[@]}"; do
+        IFS=: read -r name gid <<<"$entry"
         groupadd --system --gid "$gid" "$name"
         echo "renner-activate: added group $name ($gid)"
-    done <"$view/etc/group"
-
-    while IFS=: read -r name _ uid gid gecos home shell; do
-        [[ -n $name ]] || continue
-        getent passwd "$name" >/dev/null && continue
-        if getent passwd "$uid" >/dev/null; then
-            echo "renner-activate: user $name needs UID $uid, which is taken" >&2
-            conflicts=1
-            continue
-        fi
+    done
+    for entry in "${add_users[@]}"; do
+        IFS=: read -r name uid gid gecos home shell <<<"$entry"
         args=(--system --no-create-home --uid "$uid" --gid "$gid")
         [[ -n $home ]] && args+=(--home-dir "$home")
         [[ -n $shell ]] && args+=(--shell "$shell")
         [[ -n $gecos ]] && args+=(--comment "$gecos")
         useradd "${args[@]}" "$name"
         echo "renner-activate: added user $name ($uid)"
-    done <"$view/etc/passwd"
+    done
 
-    # The overlay may hold only some account files in its upper layer (for
-    # example /etc/shadow after a password change while /etc/passwd still comes
-    # from the deployment). pwconv/grpconv add the missing shadow entries for
-    # users and groups that exist; they change nothing else.
+    # A staged user can already be visible through the deployment's own passwd
+    # (lower layer) while shadow sits in the upper layer without its entry, for
+    # example after a password change. pwconv/grpconv only add missing shadow
+    # entries for existing users and groups; they never re-create accounts.
     pwconv
     grpconv
-    return "$conflicts"
 }
 
 activate_var() {
-    local stamp_dir=/var/lib/renner-os/activated
+    local stamp_dir=/var/lib/renner-os/activated paths=$manifest/var.paths
     [[ -e $stamp_dir/$id ]] && return 0
-    # Package payload under /var: add what is missing, never overwrite.
-    cp -a --update=none "$view/var/." /var/
+
+    if [[ -s $paths ]]; then
+        # A non-recursive bind of / shows the deployment's own /var directory,
+        # which the shared /var mount hides.
+        local view=/run/renner/deployment-var path src created=0
+        mkdir -p "$view"
+        mountpoint -q "$view" || mount --bind -o ro / "$view"
+        trap 'umount "$view" 2>/dev/null || true; rmdir "$view" 2>/dev/null || true' RETURN
+
+        while read -r path; do  # sorted, so parents come before children
+            [[ $path == /var/* ]] || continue
+            [[ -e $path || -L $path ]] && continue   # existing state: never touched
+            src=$view$path
+            [[ -e $src || -L $src ]] || continue
+            mkdir -p "$(dirname "$path")"
+            if [[ -d $src && ! -L $src ]]; then
+                mkdir "$path"
+                chown --reference="$src" "$path"
+                chmod --reference="$src" "$path"
+                touch --reference="$src" "$path"
+            else
+                cp -a --no-target-directory "$src" "$path"
+            fi
+            created=$((created + 1))
+        done <"$paths"
+        echo "renner-activate: created $created package path(s) in /var"
+    fi
+
     mkdir -p "$stamp_dir"
     touch "$stamp_dir/$id"
-    echo "renner-activate: /var payload of deployment $id applied"
+    echo "renner-activate: deployment $id activated"
 }
 
 case $mode in

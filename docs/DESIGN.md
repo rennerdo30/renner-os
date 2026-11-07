@@ -1,6 +1,6 @@
 # renner.dev OS: design
 
-Status: draft, 2026-11-07. Only the test lab and two drafts exist; no OS code yet.
+Status: draft, 2026-11-07. Install script, immutable layout and desktop install exist and are lab-tested; audio, theme and performance are designs.
 
 ## Owner direction (2026-11-07)
 
@@ -16,6 +16,31 @@ Status: draft, 2026-11-07. Only the test lab and two drafts exist; no OS code ye
   2. **Media creator.** A tool that takes the official Arch ISO and adapts it
      on the user's own machine, so the stick boots straight into our installer.
   3. **Our own ISO.**
+
+Added later the same day (owner, 2026-11-07, verbatim where quoted):
+
+- **Audio that remembers:** "a proper pipe wire audio management system that
+  properly saves and restores" — last time on Linux "the sessions were never
+  really saved and restored". Plus "a proper volume mixer like Windows has"
+  (Plasma's mixer is the base). See "Audio" below.
+- **A real custom KDE theme and layout**, specced down properly, not a
+  *Spielerei* (toy). See "Desktop" below.
+- **An installer anyone can use, like Windows:** "an OS that anybody can install
+  and use". The download installer and the later ISO installer "should have
+  the same base and we develop it ourselves fully", probably a Rust app, with a
+  graphical interface even on the plain Arch ISO, which has none ("if you can
+  make it work that we get some cheap graphics working only for our installer
+  that would be crazy good"); a TUI is acceptable as the fallback. See
+  "Installer" below.
+- **Unattended installs from a config file are "very important"**: specify a
+  config file and the installer installs the system with no questions.
+- **The desktop should feel as "Windowsy" as possible for the user**: "A
+  Windows user should just feel at home. But it's not Windows ... without all
+  the downsides", better in UX and in performance.
+- **Performance first, stability always:** "maximum performance for drives,
+  maximum performance for the graphics, maximum performance for games ... the
+  best possible experience". Kernel and tuning choices are ours to make. See
+  "Performance" below.
 
 ## Architecture at a glance
 
@@ -93,16 +118,22 @@ The closest match with plain Arch packages:
   A failed transaction deletes its snapshot and boot entry; anything left
   unfinished is removed by the next update. It keeps 3 finished deployments
   plus the booted one.
-- **Activation** only adds, so rollback stays safe:
+- **Activation** follows a manifest that `renner-update` writes into each
+  deployment (`/usr/lib/renner-os/activation/`): the groups and users this
+  transaction added (account lists before and after pacman, compared by name)
+  and the package-owned paths under `/var` (`pacman -Qlq`). Only the manifest
+  is applied, never the account databases as a whole, so deleted or renamed
+  local users stay that way. It only adds, so rollback stays safe:
   - `renner-activate-accounts.service` (every boot, before `systemd-sysusers`;
-    needs only `/etc`, which the initramfs mounts): system groups and users that
-    the deployment's own `/etc` has but the live `/etc` lacks are added with the
-    exact IDs from staging; `pwconv`/`grpconv` fill in missing shadow entries
-    when only some account files are in the overlay's upper layer. An ID taken
-    by another name fails the unit.
-  - `renner-activate-var.service` (first boot of each deployment, after
-    `local-fs.target`, before `systemd-tmpfiles-setup`): files that packages
-    ship under `/var` are copied into the shared `/var` without overwriting.
+    needs only `/etc`, which the initramfs mounts): checks every manifest
+    entry first (an existing name must have the staged IDs; a missing one needs
+    free IDs) and changes nothing on any conflict; then `groupadd`/`useradd`,
+    and `pwconv`/`grpconv` for missing shadow entries.
+  - `renner-activate-var.service` (first boot of each deployment; requires the
+    account step to have succeeded): creates only the manifest's paths that
+    do not exist in the shared `/var`, with the staged owner, mode and times.
+    Existing files and directories are never touched. **Rule:** `/var` is
+    state; package files there are seeded once and never updated.
   - Ordering matters: `systemd-sysusers` runs before `local-fs.target`, so one
     unit ordered after `local-fs.target` and before `sysusers` is a cycle (a lab
     boot hung on it); hence two units.
@@ -161,10 +192,18 @@ the way. `packages/renner-exe` (draft, never run) does this:
    package in our repo, so it works offline and changes only with an update we
    tested. The DXVK, VKD3D-Proton and protonfixes layers come with it. Plain
    `wine` is the fallback.
-4. **Prefixes:** an exe inside an existing prefix (`…/drive_c/…`) runs in that
-   prefix. Anything else uses the shared default prefix. "Run in its own prefix"
-   is a Dolphin context-menu action. Prefixes live in
-   `~/.local/share/renner-os/prefixes/`.
+4. **Prefixes, like one Windows (owner, 2026-11-07):** normal programs share
+   **one default prefix**, so there is one C: and one `Program Files`, as on
+   Windows. An exe inside an existing prefix (`…/drive_c/…`) runs in that
+   prefix. Isolation only when needed (conflicting runtimes, known
+   troublemakers): automatic from a compatibility list, or "Run in its own
+   prefix" in Dolphin. Prefixes live in `~/.local/share/renner-os/prefixes/`.
+   **Every prefix sees the same user data and drives:** `Documents`,
+   `Downloads`, `Desktop`, `Pictures`, `Music` and `Videos` are the real home
+   folders; `D:`, `E:` … are the same real drives with the same letters in
+   every prefix; `Z:` is `/`. Steam games keep Steam's prefixes but get the
+   same mapping. Later, if needed: layered prefixes (a shared runtime base
+   with a thin layer per isolated program).
 5. **Integration:** installed Windows programs get start-menu entries (Wine
    already writes `.desktop` files; we re-home them under a "Windows" category).
    Logs go to `~/.local/state/renner-os/exe/`, and a failure shows a KDE
@@ -184,10 +223,119 @@ Direction: calm, dense, precise, like a pro tool and not a gaming RGB look.
   1 px separators, 6 px radii, a tight but readable density.
 - Inter for the UI, JetBrains Mono for monospace (both OFL, installed as
   dependencies so there's no font fallback).
-- Floating bottom panel, icon-only task manager, centred launcher, system tray kept
-  minimal. Breeze as the widget base with our colour scheme and Plasma style,
-  packaged as a Plasma global theme (`renner-theme`) plus SDDM and splash.
+- Breeze as the widget base with our colour scheme and Plasma style, packaged
+  as a Plasma global theme (`renner-theme`) plus SDDM and splash.
 - Built as real design work (mockups first, owner sign-off), never as a stub.
+
+**Familiar to Windows users (owner, 2026-11-07):** familiar *layout and
+behaviour*, our own *look*.
+
+| Windows habit | renner.dev OS default |
+| --- | --- |
+| Taskbar at the bottom with pinned apps; tray, clock and notifications on the right | Same layout |
+| Start button and menu with search | Launcher with instant search over apps, files and settings |
+| Win, Alt+Tab, Win+E, Win+L, Win+D, Win+arrows, Ctrl+Shift+Esc | Same shortcuts |
+| Snap layouts | KWin tiling with the same gestures |
+| Minimise, maximise, close on the right | Same |
+| Explorer, Control Panel, Task Manager | Dolphin, System Settings, System Monitor, named and placed so they are found the same way |
+
+Better than Windows by default: no ads, no telemetry, no account requirement,
+no forced reboots (updates are transactional with rollback), fast search, and
+one consistent look across all settings.
+
+Not copied, for legal reasons and for our own identity: Microsoft logos, icons,
+fonts (Segoe), sounds or exact visuals (no third-party trademarks in shipped
+files). The visual identity stays the prosumer direction above.
+
+### Installer: one Rust app for every path (design, not built yet)
+
+One program, `renner-installer`, for the download path, the media creator and
+our own ISO. Only the way it draws differs.
+
+| Part | What it is |
+| --- | --- |
+| `installer-core` | The install engine with no UI: disk detection and the partition plan, btrfs layout, packages, GPU drivers, boot loader, users, progress events and a resumable log. It takes over every stage of `install/install.sh`. |
+| GUI (Slint) | On the plain Arch ISO: Slint's LinuxKMS backend draws straight to the screen through DRM/KMS and reads input through libinput, with no X11 or Wayland, using the software renderer, so no GPU driver is needed (DRM dumb buffers, falling back to `/dev/fb*`). On our own ISO: the same UI in a normal window. |
+| TUI (ratatui) | Fallback when no usable display is found, and for serial consoles. |
+| Unattended | A first-class mode, not a test hook: a documented TOML config (disk, partitioning choice, users, locale, timezone, keymap, extra packages, options) and no questions. Passwords only as hashes. `--check` validates the config and prints the exact plan without touching anything. The lab tests run this path, so it is the most tested one. |
+
+- **Flow, like Windows:** language and keyboard → network (Wi-Fi if needed) →
+  disk (erase the whole disk; "next to Windows" later) → user and password →
+  summary → install with real progress → reboot. Sensible defaults, nothing to
+  type into a terminal. Mockups first, owner sign-off, in the theme's design
+  language.
+- **Download path:** the one-liner fetches a small bootstrap that verifies the
+  signed installer binary before running it.
+- **Risk:** Slint calls the LinuxKMS backend experimental, so the TUI
+  fallback ships from the start and both are tested in the lab (which has a
+  virtio GPU and a serial console).
+- `install/install.sh` stays the reference and lab tool until the Rust
+  installer passes the same lab tests for every stage.
+
+### Audio: PipeWire that saves and restores (design, not built yet)
+
+The owner's experience: settings never reliably survived sessions. The usual
+causes are not missing persistence but unstable device identity (a USB headset
+in another port, HDMI after a monitor switch, Bluetooth reconnects get new node
+names), restore features that are off or partial, and no rule for which device
+becomes default when several come and go. Plan, in order:
+
+1. **WirePlumber's own memory fully on and tested:** default devices, device
+   profiles and routes (ports), per-app stream volume, mute and target device,
+   all stored in `~/.local/state/wireplumber` (on `@home`, so updates and
+   rollbacks never touch it).
+2. **Stable device identity:** WirePlumber rules that name and match devices by
+   stable properties (serial number, bus path, Bluetooth address) instead of
+   enumeration order, so a remembered setting finds its device again.
+3. **Device priority:** the user ranks outputs and inputs (for example headset
+   > speakers > HDMI). When a higher-ranked device appears, it becomes the
+   default again; when it goes, the next one takes over. Small service on top
+   of WirePlumber, configured from the mixer UI.
+4. **Mixer:** Plasma's mixer (per-app volume, device switch, profiles) styled to
+   our theme; anything missing compared to the Windows mixer is added there,
+   not as a separate app.
+5. **Tests that can fail:** lab scenarios with virtual devices: set volumes and
+   defaults, reboot, unplug/replug, update, roll back; every value must come
+   back. Then real hardware with USB, HDMI and Bluetooth.
+
+Before building: check upstream WirePlumber issues and existing tools for each
+failure mode, and write down which of them the stock configuration already
+handles (history first, price before building).
+
+### Performance (design, not built yet)
+
+Stability first, then the most performance that is measurable. Plan:
+
+| Area | Choice | Reason |
+| --- | --- | --- |
+| Kernel | `linux-zen` by default, stock `linux` as a second boot entry | Official Arch package with desktop-oriented tuning; nothing self-compiled. CachyOS-style builds (`-O3`, x86-64-v3) only with our own repo and only if measured worth it. |
+| CPU scheduler | `sched_ext` with `scx_lavd` (`scx-scheds`) | Built for interactive and gaming loads (Steam Deck); switchable at runtime. |
+| Storage | NVMe `none`, SATA SSD `mq-deadline`, HDD `bfq` via udev; btrfs `noatime`, `zstd:1` | The right scheduler per device type. |
+| Memory | zram swap (`zram-generator`) | Compressed RAM swap instead of disk swap: no stalls under memory pressure. |
+| Games | `ntsync`, `gamemode`, `kernel.split_lock_mitigate=0` | Faster Wine synchronisation; split-lock mitigation slows some Windows games. |
+| Mitigations | Kept on | A few percent is not worth real security holes on a daily driver. |
+
+Every tweak needs a before/after measurement on real hardware (game frame
+times and FPS, boot time, disk throughput, input latency) and stays only if it
+helps. The lab VM cannot measure performance. With nvidia-open, a non-default
+kernel needs `nvidia-open-dkms` and its headers.
+
+### Theme and layout: the plan (design, not built yet)
+
+Specced down before building, so it is a product and not a toy:
+
+1. **Design spec:** tokens (colour scales for light and dark, the one accent,
+   type scale with Inter and JetBrains Mono, spacing, radii, borders,
+   elevation, motion), with written rules for where each is used.
+2. **Mockups of every surface:** desktop and panel, launcher, task switcher,
+   notifications, volume and network popups, system settings, Dolphin, Konsole,
+   window decorations, SDDM login, lock screen, splash. Owner sign-off first.
+3. **Implementation as packages:** a Plasma global theme (colour scheme, Plasma
+   style, window decoration, cursor, icons, wallpapers, splash, SDDM theme),
+   the panel layout as a look-and-feel layout script, and KWin, font and
+   behaviour defaults.
+4. **Checks:** screenshots of every surface in light and dark in the lab,
+   compared against the mockups.
 
 ### Media creator (step 2)
 

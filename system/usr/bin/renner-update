@@ -23,6 +23,7 @@ readonly WORK=/run/renner-update
 readonly TOP=$WORK/top     # btrfs top level (subvolid 5)
 readonly ROOT=$WORK/root   # bind mount of the new deployment for the chroot
 readonly MARKER=usr/lib/renner-os/deployment-complete
+readonly MANIFEST=usr/lib/renner-os/activation  # read by renner-activate at boot
 
 # Live /etc paths mirrored into the new deployment before pacman runs, so the
 # chroot (which sees the deployment's own /etc, without the overlay) builds
@@ -140,6 +141,21 @@ mirror_live_etc() {  # exact copy of the effective /etc paths, including absence
     done
 }
 
+write_manifest() {  # write_manifest BEFORE_DIR: what renner-activate applies at boot
+    local before=$1 m=$dst/$MANIFEST
+    rm -rf "$m"; mkdir -p "$m"
+    # Groups and users this transaction added (by name), with staged IDs.
+    awk -F: 'NR == FNR { seen[$1] = 1; next } !($1 in seen)' \
+        "$before/group" "$dst/etc/group" >"$m/accounts.group"
+    awk -F: 'NR == FNR { seen[$1] = 1; next } !($1 in seen)' \
+        "$before/passwd" "$dst/etc/passwd" >"$m/accounts.passwd"
+    # Package-owned paths under /var, from pacman's own file lists. The shared
+    # package cache, logs and the pacman database link are not payload.
+    arch-chroot "$ROOT" pacman -Qlq | sed 's#/$##' | grep '^/var/' \
+        | grep -v -E '^/var/(cache/pacman|log|lib/pacman)(/|$)' | sort -u >"$m/var.paths" || true
+    say "Manifest: $(wc -l <"$m/accounts.group") group(s), $(wc -l <"$m/accounts.passwd") user(s), $(wc -l <"$m/var.paths") /var path(s)"
+}
+
 transaction() {
     if mountpoint -q "$ROOT"; then
         die "a failed update left mounts in $ROOT; reboot first"
@@ -152,6 +168,7 @@ transaction() {
     btrfs subvolume snapshot "$TOP/@deployments/$booted" "$dst" >/dev/null
     trap cleanup EXIT
     rm -f "$dst/$MARKER"
+    rm -rf "${dst:?}/$MANIFEST"   # the previous transaction's manifest is not ours
 
     mirror_live_etc
     [[ -e $dst/etc/kernel/cmdline ]] || die "/etc/kernel/cmdline is missing"
@@ -171,9 +188,16 @@ transaction() {
     mount --bind /var/cache/pacman/pkg "$ROOT/var/cache/pacman/pkg"
     mount --bind /var/log "$ROOT/var/log"
 
+    # Account databases as mirrored from the live system, to find out below
+    # exactly which groups and users this transaction adds.
+    local before=$WORK/accounts-before
+    rm -rf "$before"; mkdir -p "$before"
+    cp "$dst/etc/group" "$dst/etc/passwd" "$before/"
+
     arch-chroot "$ROOT" pacman "$@"
     say "Building the kernel image"
     arch-chroot "$ROOT" mkinitcpio -P
+    write_manifest "$before"
     unmount_chroot || die "could not unmount $ROOT"
     [[ -s $dst/boot/renner.efi ]] || die "no kernel image was built"
 
