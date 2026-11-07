@@ -17,8 +17,9 @@ cursorTheme=breeze_cursors
 library=org.kde.breeze
 theme=Breeze
 
-[KSplash]
-Theme=None
+[ksplashrc][KSplash]
+Engine=KSplashQML
+Theme=dev.renner.desktop
 
 [Wallpaper]
 Image=renner

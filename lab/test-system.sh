@@ -51,4 +51,8 @@ check "global theme"            "dev.renner"     sh -c 'grep LookAndFeelPackage 
 check "settings pages hidden"   "kcm_kwin_effects=false" sh -c 'grep kcm_kwin_effects /etc/xdg/kdeglobals'
 check "widget style Darkly"     "widgetStyle=Darkly" sh -c 'grep widgetStyle /etc/xdg/kdeglobals'
 check "window frames Darkly"    "org.kde.darkly" sh -c 'grep ^library /etc/xdg/kwinrc'
+check "no Breeze global themes"  "^0$"  sh -c 'ls -d /usr/share/plasma/look-and-feel/org.kde.breeze* 2>/dev/null | wc -l'
+check "own lock screen QML"     "LockScreen"     sh -c 'ls /usr/share/plasma/look-and-feel/dev.renner.desktop/contents/lockscreen/'
+check "renner splash"           "dev.renner"     sh -c 'cat /etc/xdg/ksplashrc'
+check "only renner colors"      "^RennerDark.colors *$" sh -c 'ls /usr/share/color-schemes/'
 exit $failed

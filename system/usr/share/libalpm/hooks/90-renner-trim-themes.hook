@@ -1,0 +1,13 @@
+[Trigger]
+Operation = Install
+Operation = Upgrade
+Type = Path
+Target = usr/share/plasma/look-and-feel/*
+Target = usr/share/color-schemes/*
+Target = usr/share/plasma/desktoptheme/*
+Target = usr/share/wallpapers/*
+
+[Action]
+Description = renner.dev OS: keeping one look (removing the stock KDE themes)...
+When = PostTransaction
+Exec = /usr/lib/renner-os/trim-themes

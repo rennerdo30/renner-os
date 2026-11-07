@@ -365,7 +365,7 @@ install_system_files() {
         case $f in
             usr/bin/* | usr/lib/renner-os/activate | usr/lib/renner-os/boot-health \
                 | usr/lib/renner-os/initrd-etc-overlay | usr/lib/renner-os/renner-exe-binfmt \
-                | usr/lib/renner-os/apps-finish) mode=755 ;;
+                | usr/lib/renner-os/apps-finish | usr/lib/renner-os/trim-themes) mode=755 ;;
         esac
         install -Dm"$mode" "$STAGING/$f" "$TARGET/$f"
     done
@@ -435,6 +435,8 @@ EOF
         rm -f "$TARGET/usr/share/applications/darklystyleconfig.desktop" \
               "$TARGET/usr/share/applications/kcm_darklydecoration.desktop"
     fi
+    # One look: the stock KDE themes go (the pacman hook repeats this on updates).
+    if ((DESKTOP)); then arch-chroot "$TARGET" /usr/lib/renner-os/trim-themes || die "could not trim the KDE themes"; fi
     # Finishes Flatpak apps the installer could not (it does nothing otherwise).
     if ((DESKTOP)); then arch-chroot "$TARGET" systemctl enable renner-apps.service >/dev/null; fi
 }

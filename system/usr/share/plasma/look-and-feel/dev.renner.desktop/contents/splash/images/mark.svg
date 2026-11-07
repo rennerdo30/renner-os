@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 34 34" width="64" height="64">
+  <!-- Start button: the renner.dev "r." mark without its tile (the tile is the
+       renner.dev Launcher's icon), white with the orange dot. Same geometry as
+       the logo, scaled 0.7 and centred. -->
+  <g transform="translate(5.3 0.52) scale(0.7)">
+    <path fill="#f7f8fb" d="M0 7h9.5v5.2C12 8.4 16.2 6.4 22 6.4V16c-7.4 0-12.5 2.6-12.5 10.4V40H0z"/>
+    <path fill="#ff7a1a" d="M26 32h8v8h-8z"/>
+  </g>
+</svg>

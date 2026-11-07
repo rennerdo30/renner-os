@@ -1,0 +1,34 @@
+#!/bin/bash
+# renner.dev OS: one look, no theme zoo (owner, 2026-11-08: "remove the default
+# plasma themes like breeze"). Runs after install and as a pacman hook after
+# every update that brings the files back.
+#
+#   - The renner.dev global theme gets the screens it does not draw itself
+#     (lock screen, logout, OSD, ...) from the current Breeze global theme, so
+#     they always match the installed Plasma; then the Breeze global themes go.
+#   - Breeze/Darkly color schemes, the Breeze Dark/Light Plasma styles and the
+#     KDE wallpapers go. The Breeze Plasma style "default" stays: it is the
+#     fallback for elements the renner Plasma style does not define.
+set -euo pipefail
+ROOT=${1:-}
+LNF=$ROOT/usr/share/plasma/look-and-feel
+OURS=$LNF/dev.renner.desktop
+BREEZE=$LNF/org.kde.breeze.desktop
+
+if [[ -d $BREEZE/contents && -d $OURS/contents ]]; then
+    for part in "$BREEZE"/contents/*; do
+        name=$(basename "$part")
+        case $name in
+            defaults | layouts | previews | splash) continue ;;   # ours
+        esac
+        rm -rf "${OURS:?}/contents/$name"
+        cp -a "$part" "$OURS/contents/$name"
+    done
+fi
+rm -rf "$LNF/org.kde.breeze.desktop" "$LNF/org.kde.breezedark.desktop" "$LNF/org.kde.breezetwilight.desktop"
+rm -f "$ROOT"/usr/share/color-schemes/Breeze*.colors "$ROOT"/usr/share/color-schemes/Darkly.colors
+rm -rf "$ROOT/usr/share/plasma/desktoptheme/breeze-dark" "$ROOT/usr/share/plasma/desktoptheme/breeze-light"
+for wp in "$ROOT"/usr/share/wallpapers/*; do
+    [[ -e $wp && $(basename "$wp") != renner ]] && rm -rf "$wp"
+done
+exit 0
