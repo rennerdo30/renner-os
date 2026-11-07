@@ -24,7 +24,10 @@ fi
 
 state=/run/renner/etc-overlay
 mkdir -p "$state"
-mount -t btrfs -o subvol=/@etc-overlay,noatime "/dev/disk/by-uuid/$uuid" "$state"
+# Same compression as the root mount: btrfs options apply to the whole
+# filesystem, and a mount without compress= turned compression off for every
+# subvolume and left an empty "compress=" that breaks later remounts (RO-26).
+mount -t btrfs -o subvol=/@etc-overlay,compress=zstd:1,noatime "/dev/disk/by-uuid/$uuid" "$state"
 mkdir -p "$state/upper" "$state/work"
 # index=off: the lower layer is a different deployment after every update.
 # With the index on, overlayfs records the lower root in the upper layer and

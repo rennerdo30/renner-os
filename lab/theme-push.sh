@@ -29,11 +29,16 @@ uid=$(X id -u "$USER_NAME")
 AS=(runuser -u "$USER_NAME" -- env "XDG_RUNTIME_DIR=/run/user/$uid" "DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/$uid/bus")
 T=120 X sh -c 'set -e
     curl -fsS -o /tmp/theme.tar http://10.0.2.2:8079/artifacts/theme.tar
-    mount -o remount,rw /
-    trap "btrfs property set -ts / ro true; mount -o remount,ro /" EXIT
-    btrfs property set -ts / ro false
-    tar -xf /tmp/theme.tar -C / --no-same-owner
-    /usr/lib/renner-os/trim-themes
+    # The booted deployment, mounted a second time (writable) under /run: no
+    # remount of / needed. Its read-only flag is set again whatever happens.
+    dep=$(grep -o "subvol=/\?@deployments/[0-9]*" /proc/cmdline | cut -d= -f2)
+    dev=$(findmnt -no SOURCE / | sed "s/\[.*//")
+    mkdir -p /run/renner-push
+    mount -o "subvol=$dep,compress=zstd:1,noatime" "$dev" /run/renner-push
+    trap "btrfs property set -ts /run/renner-push ro true; umount /run/renner-push" EXIT
+    btrfs property set -ts /run/renner-push ro false
+    tar -xf /tmp/theme.tar -C /run/renner-push --no-same-owner
+    /usr/lib/renner-os/trim-themes /run/renner-push
     rm -f /tmp/theme.tar'
 # Reload what Plasma and KWin read; the user's own settings are reset to the
 # system defaults so the pushed defaults show.
