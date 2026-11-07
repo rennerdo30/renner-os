@@ -146,7 +146,9 @@ ensure_prefix() {
         command -v notify-send >/dev/null && notify-send --app-name="Windows apps" --icon=application-x-ms-dos-executable \
             "Setting up Windows support" "Creating drive C: for Windows programs (a few seconds)."
         echo "== creating prefix $prefix" >>"$log"
-        run_proton wineboot -u >>"$log" 2>&1 || die "could not set up the Windows environment (log: $log)"
+        # runinprefix, not run: "run" goes through a wrapper that opens a
+        # console window for wineboot (owner screenshot, 2026-11-08).
+        "$proton/proton" runinprefix wineboot -u </dev/null >>"$log" 2>&1 || die "could not set up the Windows environment (log: $log)"
     fi
     link_user_folders
     map_drives

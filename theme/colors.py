@@ -30,6 +30,22 @@ SUCCESS = "61,220,151"   # #3ddc97
 DANGER = "255,92,122"    # #ff5c7a
 
 
+# System Settings pages hidden by default: theme internals (the renner.dev look
+# is the product), window manager details, search indexing, services and other
+# power-user pages. Everything a Windows user looks for stays.
+HIDDEN_SETTINGS = [
+    "kcm_lookandfeel", "kcm_style", "kcm_desktoptheme", "kcm_icons", "kcm_cursortheme",
+    "kcm_splashscreen", "kcm_kwindecoration", "kcm_kwin_effects", "kcm_kwin_scripts",
+    "kcm_kwinrules", "kcm_kwinxwayland", "kcm_kwintabbox", "kcm_kwinoptions",
+    "kcm_kwinscreenedges", "kcm_kwintouchscreen", "kcm_activities", "kcm_plasmasearch",
+    "kcm_kded", "kcm_baloofile", "kcm_recentFiles", "kcm_smserver", "kcm_soundtheme",
+    "kcm_feedback", "kcm_spellchecking", "kcm_sddm", "kcm_proxy", "kcm_netpref",
+    "kcm_kgamma", "kcm_device_automounter", "kcm_solid_actions", "kcm_desktoppaths",
+    "kcm_webshortcuts", "kcm_kamera", "kcm_workspace", "kcm_keys", "kcm_updates",
+    "kcm_filetypes", "kcm_fonts", "kcm_kwinsupportinfo", "kcm_virtualkeyboard",
+]
+
+
 def group(background, alt, foreground=TEXT, decoration_hover=ACCENT_SOFT):
     return {
         "BackgroundNormal": background,
@@ -100,12 +116,15 @@ def main() -> None:
             "smallestReadableFont": "Inter,8,-1,5,400,0,0,0,0,0,0,0,0,0,0,1",
             "fixed": "JetBrains Mono,10,-1,5,400,0,0,0,0,0,0,0,0,0,0,1",
             "AccentColor": ACCENT,
+            "BrowserApplication": "com.google.Chrome.desktop",
         },
         "WM": {**WM, "activeFont": "Inter,10,-1,5,600,0,0,0,0,0,0,0,0,0,0,1"},
         "Icons": {"Theme": "Papirus-Dark"},
         "KDE": {"LookAndFeelPackage": "dev.renner.desktop", "widgetStyle": "Breeze",
                 "contrast": "4", "AnimationDurationFactor": "0.7"},
         **EFFECTS, **GROUPS,
+        # A Windows-sized System Settings: KDE's expert pages are hidden (Kiosk).
+        "KDE Control Module Restrictions": {m: "false" for m in HIDDEN_SETTINGS},
     }
     target = SYSTEM / "etc/xdg/kdeglobals"
     target.parent.mkdir(parents=True, exist_ok=True)

@@ -1,5 +1,28 @@
-# renner.dev OS: Windows programs open with renner-exe by default.
+# renner.dev OS default apps: Chrome for the web, Kwil for text and code,
+# renner-exe for Windows programs.
 [Default Applications]
+x-scheme-handler/http=com.google.Chrome.desktop
+x-scheme-handler/https=com.google.Chrome.desktop
+text/html=com.google.Chrome.desktop
+application/xhtml+xml=com.google.Chrome.desktop
+text/plain=kwil.desktop
+text/markdown=kwil.desktop
+text/x-log=kwil.desktop
+text/x-csrc=kwil.desktop
+text/x-chdr=kwil.desktop
+text/x-c++src=kwil.desktop
+text/x-python=kwil.desktop
+text/x-rust=kwil.desktop
+application/json=kwil.desktop
+application/xml=kwil.desktop
+text/xml=kwil.desktop
+text/css=kwil.desktop
+text/x-shellscript=kwil.desktop
+application/x-shellscript=kwil.desktop
+application/toml=kwil.desktop
+application/x-yaml=kwil.desktop
+text/csv=kwil.desktop
+text/x-ini=kwil.desktop
 application/x-ms-dos-executable=renner-exe.desktop
 application/x-msdownload=renner-exe.desktop
 application/vnd.microsoft.portable-executable=renner-exe.desktop

@@ -1,0 +1,13 @@
+[Desktop Entry]
+Type=Application
+Name=Kwil
+GenericName=Text Editor
+GenericName[de]=Texteditor
+Comment=Edit text, code and Markdown
+Comment[de]=Text, Code und Markdown bearbeiten
+Exec=kwil %F
+Icon=kwil
+Terminal=false
+Categories=Utility;TextEditor;Development;
+Keywords=text;editor;notepad;markdown;code;
+MimeType=text/plain;text/markdown;text/x-log;text/x-csrc;text/x-chdr;text/x-c++src;text/x-c++hdr;text/x-python;text/x-rust;text/x-java;text/x-go;text/x-script.python;text/javascript;application/javascript;text/x-typescript;application/json;application/xml;text/xml;text/css;text/x-shellscript;application/x-shellscript;application/toml;text/x-toml;application/x-yaml;text/x-yaml;text/csv;text/x-ini;application/x-desktop;text/x-cmake;text/x-makefile;

@@ -1,0 +1,9 @@
+#!/bin/sh
+# renner.dev Launcher: the system carries its AppImage; each user gets a copy
+# in ~/Applications on the first start, which then updates itself there.
+app="$HOME/Applications/RennerLauncher.AppImage"
+if [ ! -x "$app" ]; then
+    mkdir -p "$HOME/Applications" || exit 1
+    cp /usr/share/renner-os/launcher/RennerLauncher.AppImage "$app.part" && chmod 755 "$app.part" && mv "$app.part" "$app" || exit 1
+fi
+exec "$app" "$@"

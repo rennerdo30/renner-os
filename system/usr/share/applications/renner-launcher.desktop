@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=renner.dev Launcher
+Comment=Install, update and play renner.dev games
+Comment[de]=renner.dev-Spiele installieren, aktualisieren und spielen
+Exec=renner-launcher
+Icon=renner-start
+Categories=Game;
+Terminal=false

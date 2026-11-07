@@ -17,15 +17,19 @@ panel.lengthMode = "fill";
 var start = panel.addWidget("org.kde.plasma.kickoff");
 start.currentConfigGroup = ["General"];
 start.writeConfig("icon", "renner-start");
-start.writeConfig("favoritesPortedToKAstats", "true");
+// Pinned in the start menu (ported into KDE's activity store on first use).
+start.writeConfig("favorites", "applications:com.google.Chrome.desktop,applications:org.kde.dolphin.desktop,applications:steam.desktop,applications:renner-launcher.desktop,applications:kwil.desktop,applications:com.obsproject.Studio.desktop,applications:systemsettings.desktop,applications:org.kde.discover.desktop");
+start.writeConfig("favoritesPortedToKAstats", "false");
+start.writeConfig("favoritesDisplay", "0");     // grid
+start.writeConfig("applicationsDisplay", "0");  // grid
 
 var tasks = panel.addWidget("org.kde.plasma.icontasks");
 tasks.currentConfigGroup = ["General"];
 tasks.writeConfig("launchers", [
     "applications:org.kde.dolphin.desktop",
-    "applications:firefox.desktop",
-    "applications:org.kde.konsole.desktop",
-    "applications:systemsettings.desktop"
+    "applications:com.google.Chrome.desktop",
+    "applications:steam.desktop",
+    "applications:renner-launcher.desktop"
 ]);
 tasks.writeConfig("groupingStrategy", "1");
 

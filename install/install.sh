@@ -63,6 +63,10 @@ SYSTEM_FILES=(
     usr/share/wallpapers/renner/metadata.json
     usr/share/wallpapers/renner/contents/images/3840x2160.png
     usr/share/icons/hicolor/scalable/apps/renner-start.svg
+    usr/share/icons/hicolor/scalable/apps/kwil.svg
+    usr/share/applications/kwil.desktop
+    usr/share/applications/renner-launcher.desktop
+    usr/bin/renner-launcher
     usr/share/sddm/themes/breeze/theme.conf.user
     etc/xdg/kdeglobals
     etc/xdg/kwinrc
@@ -86,11 +90,12 @@ DESKTOP_PACKAGES=(
     ksshaskpass polkit-kde-agent kmenuedit plasma-systemmonitor plasma-disks
     plasma-thunderbolt print-manager kdeplasma-addons discover flatpak-kcm kinfocenter
     breeze papirus-icon-theme
-    konsole dolphin kate ark spectacle gwenview okular kcalc filelight partitionmanager
+    konsole dolphin ark spectacle gwenview okular kcalc filelight partitionmanager
+    steam obs-studio fuse2
     ffmpegthumbs kdegraphics-thumbnailers kio-extras
     pipewire pipewire-pulse pipewire-alsa pipewire-jack wireplumber
     inter-font ttf-jetbrains-mono noto-fonts noto-fonts-emoji noto-fonts-cjk
-    flatpak bluez bluez-utils firefox
+    flatpak bluez bluez-utils
     # Windows programs (renner-exe): the 32-bit libraries Proton loads from the
     # system (it runs without the Steam runtime), home folders for the shared
     # Documents/Downloads mapping, desktop notifications. Proton itself is
@@ -290,6 +295,42 @@ EOF
     ((GPU_MULTI)) && units+=(switcheroo-control.service)
     arch-chroot "$TARGET" systemctl enable "${units[@]}" >/dev/null
     install_proton
+    install_apps
+}
+
+# Apps that are not in the Arch repositories, installed with the system:
+#   - Flathub as the system app store (Discover), Chrome and Zen from it;
+#   - Kwil (renner.dev editor) from its GitHub release, into the image, with
+#     its own updater off (the system updates it);
+#   - the renner.dev Launcher's AppImage, copied to each user's ~/Applications
+#     on first start (it updates itself there).
+FLATPAK_APPS=(com.google.Chrome app.zen_browser.zen)
+KWIL_RELEASES=${RENNER_KWIL_RELEASES:-https://api.github.com/repos/rennerdo30/kwil/releases?per_page=1}
+LAUNCHER_URL=${RENNER_LAUNCHER_URL:-https://cdn.renner.dev/launcher/hub/stable/renner-launcher-linux-x64.AppImage}
+install_apps() {
+    say "Adding apps (Chrome, Zen, Kwil, renner.dev Launcher)"
+    arch-chroot "$TARGET" flatpak remote-add --system --if-not-exists flathub \
+        https://dl.flathub.org/repo/flathub.flatpakrepo || die "could not add Flathub"
+    arch-chroot "$TARGET" flatpak install --system --noninteractive -y flathub "${FLATPAK_APPS[@]}" \
+        || die "could not install ${FLATPAK_APPS[*]} from Flathub"
+
+    local json url archive dir=$TARGET/usr/lib/kwil
+    json=$(curl -fsSL --retry 2 "$KWIL_RELEASES") || die "cannot reach the Kwil releases"
+    url=$(grep -o '"browser_download_url": *"[^"]*linux-x64\.tar\.gz"' <<<"$json" | head -1 | cut -d'"' -f4)
+    [[ -n $url ]] || die "no Kwil download for Linux in its latest release"
+    archive=$TARGET/var/tmp/kwil.tar.gz
+    curl -fsSL --retry 2 -o "$archive" "$url" || die "Kwil download failed"
+    mkdir -p "$dir"
+    tar -xzf "$archive" -C "$dir" --strip-components=1
+    rm -f "$archive"
+    [[ -x $dir/kwil ]] || die "the Kwil archive has no kwil program"
+    touch "$dir/kwil.no-update"
+    ln -sfn /usr/lib/kwil/kwil "$TARGET/usr/bin/kwil"
+
+    install -d "$TARGET/usr/share/renner-os/launcher"
+    curl -fsSL --retry 2 -o "$TARGET/usr/share/renner-os/launcher/RennerLauncher.AppImage" "$LAUNCHER_URL" \
+        || die "renner.dev Launcher download failed"
+    chmod 755 "$TARGET/usr/share/renner-os/launcher/RennerLauncher.AppImage"
 }
 
 # Proton for Windows programs, part of the system image: GE-Proton's latest
