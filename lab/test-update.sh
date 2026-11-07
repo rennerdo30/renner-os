@@ -25,7 +25,7 @@ L exec $VM --wait-agent 240 -- true >/dev/null || fail "guest agent after the up
 after=$(booted | tr -d '\r')
 echo "booted after:  $after"
 [[ -n $after && $after != "$before" ]] || fail "still on the old deployment"
-X sh -c 'userdbctl user sddm --output=short >/dev/null && echo userdb-ok' | grep -q userdb-ok || fail "system account sddm not in userdb"
+X sh -c 'userdbctl user sddm >/dev/null && echo userdb-ok' | grep -q userdb-ok || fail "system account sddm not in userdb"
 failed=$(X systemctl --failed --no-legend --plain | tr -d '\r')
 [[ -z $failed ]] || fail "failed units: $failed"
 X sh -c 'command -v tree' >/dev/null || fail "tree is not installed"
