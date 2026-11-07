@@ -16,7 +16,7 @@ panel.lengthMode = "fill";
 
 var start = panel.addWidget("org.kde.plasma.kickoff");
 start.currentConfigGroup = ["General"];
-start.writeConfig("icon", "/usr/share/renner-os/start.svg");
+start.writeConfig("icon", "renner-start");
 start.writeConfig("favoritesPortedToKAstats", "true");
 
 var tasks = panel.addWidget("org.kde.plasma.icontasks");

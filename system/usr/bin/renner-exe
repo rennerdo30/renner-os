@@ -15,12 +15,14 @@
 #     letters (H: home, D: E: ... removable media, Z: the whole system);
 #   - programs an installer puts into the Windows Start Menu appear in the
 #     KDE menu under "Windows apps".
-# Runner: umu-launcher with Proton (UMU-Proton by default; a Proton pinned in
-# the OS image when /usr/share/renner-os/proton/current exists).
+# Runner: Proton from the OS image (/usr/share/renner-os/proton/current, put
+# there by the installer), started directly: no Steam, no Steam runtime and
+# nothing to download on the first start.
 set -uo pipefail
 
 readonly SYSTEM_PROTON=/usr/share/renner-os/proton/current
 readonly DATA=${XDG_DATA_HOME:-$HOME/.local/share}
+# Proton keeps each prefix in <compat dir>/pfx; PREFIX_ROOT holds compat dirs.
 readonly PREFIX_ROOT=$DATA/renner-os/prefixes
 readonly LOG_DIR=${XDG_STATE_HOME:-$HOME/.local/state}/renner-os/exe
 readonly MENU_DIR=$DATA/applications/renner-windows
@@ -61,24 +63,27 @@ to_windows_path() {
 }
 
 # --- runner -----------------------------------------------------------------
-command -v umu-run >/dev/null || die "Proton (umu-launcher) is not installed"
-export GAMEID=${GAMEID:-umu-default}
-if [[ -z ${PROTONPATH:-} && -d $SYSTEM_PROTON ]]; then
-    export PROTONPATH=$SYSTEM_PROTON
-fi
+proton=${PROTONPATH:-$SYSTEM_PROTON}
+[[ -x $proton/proton ]] || die "Windows support (Proton) is missing from this system"
 
 # --- prefix -----------------------------------------------------------------
 if [[ -n ${WINEPREFIX:-} ]]; then
-    prefix=$WINEPREFIX
-elif [[ $target == */drive_c/* && -f ${target%%/drive_c/*}/system.reg ]]; then
-    prefix=${target%%/drive_c/*}
+    compat=${WINEPREFIX%/pfx}
+elif [[ $target == */pfx/drive_c/* && -f ${target%%/drive_c/*}/system.reg ]]; then
+    compat=${target%%/pfx/drive_c/*}
 elif ((own_prefix)); then
-    prefix=$PREFIX_ROOT/$(slug "$stem")
+    compat=$PREFIX_ROOT/$(slug "$stem")
 else
-    prefix=$PREFIX_ROOT/default
+    compat=$PREFIX_ROOT/default
 fi
-mkdir -p -- "$prefix" "$LOG_DIR" "$MENU_DIR" || die "cannot create $prefix"
+prefix=$compat/pfx
+mkdir -p -- "$compat" "$LOG_DIR" "$MENU_DIR" "$DATA/renner-os/steam-client" || die "cannot create $compat"
 export WINEPREFIX=$prefix
+# What Proton's own script needs outside Steam.
+export STEAM_COMPAT_DATA_PATH=$compat
+export STEAM_COMPAT_CLIENT_INSTALL_PATH=$DATA/renner-os/steam-client
+export SteamAppId=${SteamAppId:-0} SteamGameId=${SteamGameId:-0}
+run_proton() { "$proton/proton" run "$@"; }
 log=$LOG_DIR/$(slug "$stem").log
 : >"$log"
 
@@ -137,9 +142,9 @@ map_drives() {
 ensure_prefix() {
     if [[ ! -f $prefix/system.reg ]]; then
         command -v notify-send >/dev/null && notify-send --app-name="Windows apps" --icon=application-x-ms-dos-executable \
-            "Setting up Windows support" "The first start takes a minute."
+            "Setting up Windows support" "Creating drive C: for Windows programs (a few seconds)."
         echo "== creating prefix $prefix" >>"$log"
-        umu-run wineboot -u >>"$log" 2>&1 || die "could not set up the Windows environment (log: $log)"
+        run_proton wineboot -u >>"$log" 2>&1 || die "could not set up the Windows environment (log: $log)"
     fi
     link_user_folders
     map_drives
@@ -192,15 +197,15 @@ cd -- "$(dirname -- "$target")" || die "cannot enter $(dirname -- "$target")"
     echo "== $(date -Is) renner-exe"
     echo "program: $target"
     echo "prefix:  $WINEPREFIX"
-    echo "proton:  ${PROTONPATH:-UMU-Proton (default)}"
+    echo "proton:  $(readlink -f -- "$proton")"
 } >>"$log"
 
 start=$SECONDS
 if [[ -t 1 ]]; then
-    umu-run "${cmd[@]}" "$@" 2>&1 | tee -a "$log"
+    run_proton "${cmd[@]}" "$@" 2>&1 | tee -a "$log"
     status=${PIPESTATUS[0]}
 else
-    umu-run "${cmd[@]}" "$@" >>"$log" 2>&1
+    run_proton "${cmd[@]}" "$@" >>"$log" 2>&1
     status=$?
 fi
 echo "== exit $status after $((SECONDS - start)) s" >>"$log"

@@ -59,7 +59,7 @@ SYSTEM_FILES=(
     usr/share/plasma/look-and-feel/dev.renner.desktop/contents/layouts/org.kde.plasma.desktop-layout.js
     usr/share/wallpapers/renner/metadata.json
     usr/share/wallpapers/renner/contents/images/3840x2160.png
-    usr/share/renner-os/start.svg
+    usr/share/icons/hicolor/scalable/apps/renner-start.svg
     usr/share/sddm/themes/breeze/theme.conf.user
     etc/xdg/kdeglobals
     etc/xdg/kwinrc
@@ -88,9 +88,14 @@ DESKTOP_PACKAGES=(
     pipewire pipewire-pulse pipewire-alsa pipewire-jack wireplumber
     inter-font ttf-jetbrains-mono noto-fonts noto-fonts-emoji noto-fonts-cjk
     flatpak bluez bluez-utils firefox
-    # Windows programs (renner-exe): Proton through umu-launcher, home folders
-    # for the shared Documents/Downloads mapping, desktop notifications.
-    umu-launcher xdg-user-dirs libnotify
+    # Windows programs (renner-exe): the 32-bit libraries Proton loads from the
+    # system (it runs without the Steam runtime), home folders for the shared
+    # Documents/Downloads mapping, desktop notifications. Proton itself is
+    # installed by install_proton.
+    lib32-libx11 lib32-libxext lib32-libxrandr lib32-libxi lib32-libxcursor
+    lib32-libxcomposite lib32-libxinerama lib32-freetype2 lib32-fontconfig lib32-gnutls
+    lib32-libpulse lib32-alsa-lib lib32-alsa-plugins lib32-sdl2-compat lib32-openal
+    xdg-user-dirs libnotify
 )
 # GPU driver packages come from renner-gpu-detect (see install_desktop).
 GPU_PACKAGES=() NVIDIA_DRIVER=none GPU_MULTI=0
@@ -280,6 +285,34 @@ EOF
     fi
     ((GPU_MULTI)) && units+=(switcheroo-control.service)
     arch-chroot "$TARGET" systemctl enable "${units[@]}" >/dev/null
+    install_proton
+}
+
+# Proton for Windows programs, part of the system image: GE-Proton's latest
+# release, checked against its published SHA-512. renner-exe runs it directly,
+# so no user ever downloads anything on a first start.
+PROTON_RELEASES=${RENNER_PROTON_RELEASES:-https://api.github.com/repos/GloriousEggroll/proton-ge-custom/releases/latest}
+install_proton() {
+    say "Adding Windows program support (Proton)"
+    local json url sumurl name archive dir=$TARGET/usr/share/renner-os/proton
+    json=$(curl -fsSL --retry 2 "$PROTON_RELEASES") || die "cannot reach the Proton releases"
+    # The release also carries aarch64 builds; take the x86_64 ones.
+    url=$(grep -o '"browser_download_url": *"[^"]*x86_64\.tar\.gz"' <<<"$json" | head -1 | cut -d'"' -f4)
+    sumurl=$(grep -o '"browser_download_url": *"[^"]*x86_64\.sha512sum"' <<<"$json" | head -1 | cut -d'"' -f4)
+    [[ -n $url && -n $sumurl ]] || die "no Proton download in the latest release"
+    archive=$TARGET/var/tmp/$(basename "$url")
+    curl -fsSL --retry 2 -o "$archive" "$url" || die "Proton download failed"
+    [[ $(curl -fsSL --retry 2 "$sumurl" | cut -d' ' -f1) == "$(sha512sum "$archive" | cut -d' ' -f1)" ]] \
+        || { rm -f "$archive"; die "Proton checksum mismatch; not installing it"; }
+    # The archive's top folder is named after the release, not the file.
+    name=$({ tar -tzf "$archive" || true; } | head -1 | cut -d/ -f1)
+    [[ -n $name ]] || die "Proton archive is empty"
+    mkdir -p "$dir"
+    tar -xzf "$archive" -C "$dir"
+    rm -f "$archive"
+    [[ -x $dir/$name/proton ]] || die "Proton archive has no proton script"
+    ln -sfn "$name" "$dir/current"
+    echo "    $name"
 }
 
 install_system_files() {
