@@ -24,6 +24,9 @@ steps=("$@")
 for step in "${steps[@]}"; do
     case $step in
         installer)
+            echo "==> package names in install.sh"
+            missing=$(bash "$REPO/lab/pkgcheck.sh" "$REPO/install/install.sh" | grep MISSING || true)
+            [[ -z $missing ]] || { echo "$missing" >&2; exit 1; }
             echo "==> installer-core tests"
             cargo test --manifest-path "$REPO/installer/Cargo.toml" -p installer-core --quiet
             echo "==> renner-installer (kms)"

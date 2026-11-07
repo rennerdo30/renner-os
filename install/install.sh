@@ -94,7 +94,7 @@ DESKTOP_PACKAGES=(
     # installed by install_proton.
     lib32-libx11 lib32-libxext lib32-libxrandr lib32-libxi lib32-libxcursor
     lib32-libxcomposite lib32-libxinerama lib32-freetype2 lib32-fontconfig lib32-gnutls
-    lib32-libpulse lib32-alsa-lib lib32-alsa-plugins lib32-sdl2-compat lib32-openal
+    lib32-libpulse lib32-alsa-lib lib32-alsa-plugins
     xdg-user-dirs libnotify
 )
 # GPU driver packages come from renner-gpu-detect (see install_desktop).
