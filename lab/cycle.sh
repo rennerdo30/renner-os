@@ -19,6 +19,9 @@ snap_wsl=/mnt/$(pwd -W | sed -E 's#^([A-Za-z]):#\L\1#')
 python lab/lab.py down "$VM" >/dev/null
 echo "== build ($snap_wsl)"
 MSYS_NO_PATHCONV=1 wsl.exe -d renneros-build -- timeout 1800 bash "$snap_wsl/lab/wsl-build.sh" installer iso
+# A running WSL distro next to a WHPX VM froze QEMU early in the boot twice
+# (2026-11-08); our own build distro is not needed until the next build.
+wsl.exe --terminate renneros-build >/dev/null
 echo "== install into $VM"
 out=$(bash lab/test-iso.sh 2>&1) || true
 echo "$out" | grep -E "FAILED|timeout|page=" || true
