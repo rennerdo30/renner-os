@@ -23,7 +23,7 @@ set -Eeuo pipefail
 SOURCE=${RENNER_SOURCE:-https://raw.githubusercontent.com/rennerdo30/renner-os/main}
 DISK="" HOSTNAME_="" USERNAME="" PASSWORD="" TIMEZONE=UTC LOCALE=en_US.UTF-8 KEYMAP=us
 SERIAL=0 ASSUME_YES=0
-LOG=/tmp/renner-install.log
+LOG=/tmp/renner-install.log TEE_PID=""
 TARGET=/mnt
 STAGING=/tmp/renner-install
 
@@ -41,7 +41,7 @@ PACKAGES=(
 )
 
 say() { printf '\n\033[1m==> %s\033[0m\n' "$*"; }
-die() { printf '\n\033[31mrenner-install: %s\033[0m\nLog: %s\n' "$*" "$LOG" >&2; exit 1; }
+die() { printf '\n\033[31mrenner-install: %s\033[0m\nLog: %s\n' "$*" "$LOG" >&2; flush_log; exit 1; }
 ask() {  # ask VAR "prompt" [default] -- reads from the terminal, also under curl | bash
     local reply
     read -r -p "$2${3:+ [$3]}: " reply </dev/tty
@@ -82,6 +82,13 @@ collect_settings() {
         ask DISK "Disk to erase and install on"
     fi
     [[ -b $DISK ]] || die "$DISK is not a block device"
+    # Resolve aliases (/dev/disk/by-id/...) to the kernel name, so partition
+    # names come out right, and refuse partitions or other non-disk devices.
+    DISK=$(realpath -e "$DISK")
+    [[ $(lsblk -dno TYPE "$DISK") == disk ]] || die "$DISK is not a whole disk (pick e.g. /dev/nvme0n1, not a partition)"
+    if lsblk -nlo MOUNTPOINTS "$DISK" | grep -q .; then
+        die "$DISK has mounted partitions; unmount them first"
+    fi
     [[ -n $HOSTNAME_ ]] || ask HOSTNAME_ "Computer name" renner
     [[ -n $USERNAME ]] || ask USERNAME "User name"
     [[ $USERNAME =~ ^[a-z_][a-z0-9_-]*$ ]] || die "invalid user name '$USERNAME'"
@@ -114,8 +121,11 @@ fetch_system_files() {
     done
 }
 
-part() {  # part DISK N -> partition device (/dev/vda1, /dev/nvme0n1p1)
-    if [[ $1 =~ [0-9]$ ]]; then echo "${1}p$2"; else echo "$1$2"; fi
+part() {  # part DISK N -> partition device, as the kernel names it
+    local dev
+    dev=$(lsblk -lnpo NAME,PARTN "$1" | awk -v n="$2" '$2 == n { print $1 }')
+    [[ -b $dev ]] || die "partition $2 of $1 not found"
+    echo "$dev"
 }
 
 partition_disk() {
@@ -206,8 +216,10 @@ EOF
     echo '%wheel ALL=(ALL:ALL) ALL' >"$TARGET/etc/sudoers.d/10-wheel"
     chmod 440 "$TARGET/etc/sudoers.d/10-wheel"
 
+    # systemd-boot-check-no-failures: a new deployment is only marked good
+    # (boot counting) when no unit failed, not merely when sysinit was reached.
     arch-chroot "$TARGET" systemctl enable NetworkManager.service systemd-timesyncd.service \
-        systemd-boot-update.service >/dev/null
+        systemd-boot-update.service systemd-boot-check-no-failures.service >/dev/null
 }
 
 setup_boot() {
@@ -249,11 +261,21 @@ finish() {
     btrfs property set -ts "$TARGET" ro true
     umount -R "$TARGET"
     say "renner.dev OS is installed. Remove the install medium and reboot."
+    flush_log
+}
+
+flush_log() {  # wait until tee has written everything (it runs asynchronously)
+    [[ -n $TEE_PID ]] || return 0
+    exec 1>&- 2>&-
+    wait "$TEE_PID" 2>/dev/null || true
 }
 
 main() {
     parse_args "$@"
+    # Open the log before anything else; without it nothing destructive runs.
+    : >>"$LOG" || { echo "renner-install: cannot write $LOG" >&2; exit 1; }
     exec > >(tee -a "$LOG") 2>&1
+    TEE_PID=$!
     trap 'die "failed at line $LINENO"' ERR
     check_environment
     collect_settings

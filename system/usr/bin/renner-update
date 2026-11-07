@@ -14,12 +14,20 @@
 #   renner-update status           list deployments and boot entries
 set -Eeuo pipefail
 
-readonly KEEP=3            # deployments kept besides the booted one
+readonly KEEP=3            # finished deployments kept (the booted one is always kept)
 readonly TRIES=3           # boot attempts before systemd-boot falls back
 readonly ESP=/efi
 readonly WORK=/run/renner-update
-readonly TOP=$WORK/top
-readonly ROOT=$WORK/root  # bind mount of the new deployment for the chroot
+readonly TOP=$WORK/top     # btrfs top level (subvolid 5)
+readonly ROOT=$WORK/root   # bind mount of the new deployment for the chroot
+readonly VARTMP=$WORK/var  # throwaway upper layer for the chroot's /var
+
+# Live /etc files that shape the kernel image. The chroot sees the new
+# deployment's own /etc (no overlay), so the effective versions are copied in.
+readonly BOOT_CONFIG=(kernel/cmdline mkinitcpio.conf mkinitcpio.conf.d mkinitcpio.d
+                      modprobe.d modules-load.d vconsole.conf)
+# Account databases: packages that add system users must see the live ones.
+readonly ACCOUNTS=(passwd group shadow gshadow subuid subgid)
 
 die() { echo "renner-update: $*" >&2; exit 1; }
 say() { echo "==> $*"; }
@@ -28,9 +36,11 @@ cmdline=$(</proc/cmdline)
 booted=$(grep -o 'subvol=/\?@deployments/[0-9]*' <<<"$cmdline" | grep -o '[0-9]*$' || true)
 uuid=$(grep -o 'root=UUID=[^ ]*' <<<"$cmdline" | cut -d= -f3 || true)
 
-deployments() {  # oldest first
+deployments() {  # all numeric deployments, oldest first
     find "$TOP/@deployments" -mindepth 1 -maxdepth 1 -printf '%f\n' | grep -E '^[0-9]+$' | sort -n
 }
+
+is_finished() { [[ $(btrfs property get -ts "$TOP/@deployments/$1" ro) == ro=true ]]; }
 
 mount_top() {
     mkdir -p "$TOP"
@@ -40,11 +50,11 @@ mount_top() {
 status() {
     mount_top
     say "Deployments (newest last):"
+    local id mark
     while read -r id; do
-        local mark="" ro
-        ro=$(btrfs property get -ts "$TOP/@deployments/$id" ro | cut -d= -f2)
+        mark=""
         [[ $id == "$booted" ]] && mark=" (booted)"
-        [[ $ro == true ]] || mark+=" (unfinished)"
+        is_finished "$id" || mark+=" (unfinished, removed by the next update)"
         echo "    $id$mark"
     done < <(deployments)
     say "Boot entries:"
@@ -53,65 +63,127 @@ status() {
 
 delete_deployment() {
     local id=$1
-    [[ $id != "$booted" ]] || return 0
+    [[ $id != "$booted" && $id != "$new" ]] || return 0
     btrfs subvolume delete "$TOP/@deployments/$id" >/dev/null
-    find "$ESP/EFI/Linux" -maxdepth 1 -name "renner-$id*.efi" -delete
+    find "$ESP/EFI/Linux" -maxdepth 1 -name "renner-$id[+.]*" -delete
 }
 
 prune() {
-    local -a ids
-    mapfile -t ids < <(deployments)
-    local n=${#ids[@]} i
+    local id
+    local -a finished=()
+    while read -r id; do
+        if is_finished "$id"; then
+            finished+=("$id")
+        elif [[ $id != "$booted" && $id != "$new" ]]; then
+            say "Removing unfinished deployment $id (left by a failed update)"
+            delete_deployment "$id"
+        fi
+    done < <(deployments)
+    local n=${#finished[@]} i
     for ((i = 0; i < n - KEEP; i++)); do
-        [[ ${ids[i]} == "$booted" ]] && continue
-        say "Removing old deployment ${ids[i]}"
-        delete_deployment "${ids[i]}"
+        [[ ${finished[i]} == "$booted" || ${finished[i]} == "$new" ]] && continue
+        say "Removing old deployment ${finished[i]}"
+        delete_deployment "${finished[i]}"
     done
+}
+
+next_id() {
+    # UTC timestamp, but always above every existing ID: a clock that moved
+    # backwards must not sort the new deployment before older ones.
+    local now latest
+    now=$(date -u +%Y%m%d%H%M%S)
+    latest=$(deployments | tail -n1)
+    if [[ -n $latest ]] && ((now <= latest)); then
+        now=$((latest + 1))
+    fi
+    echo "$now"
+}
+
+unmount_chroot() {
+    local m
+    for m in "$ROOT/var/log" "$ROOT/var/cache/pacman/pkg" "$ROOT/var" "$ROOT"; do
+        if mountpoint -q "$m"; then umount "$m" || return 1; fi
+    done
+    rm -rf "$VARTMP"
 }
 
 new="" dst="" finished=0
 
 cleanup() {  # EXIT trap while a transaction runs: never leave a half deployment
     [[ -n $dst ]] || return 0
-    umount -q "$ROOT/var" "$ROOT" 2>/dev/null || true
+    if ! unmount_chroot; then
+        echo "renner-update: could not unmount $ROOT; reboot before the next update" >&2
+    fi
     if [[ $finished != 1 && -d $dst ]]; then
         echo "renner-update: transaction failed; removing deployment $new" >&2
-        btrfs subvolume delete "$dst" >/dev/null || true
-        rm -f "$ESP/EFI/Linux/renner-$new"*.efi
+        if ! btrfs subvolume delete "$dst" >/dev/null; then
+            echo "renner-update: could not delete $dst; the next update removes it" >&2
+        fi
+        rm -f "$ESP/EFI/Linux/renner-$new"[+.]*
     fi
 }
 
+copy_live_etc() {  # copy_live_etc PATH... : live /etc (with the overlay) -> new deployment
+    local p
+    for p in "$@"; do
+        [[ -e /etc/$p ]] || continue
+        if [[ -d /etc/$p ]]; then
+            mkdir -p "$dst/etc/$p"
+            cp -a "/etc/$p/." "$dst/etc/$p/"
+        else
+            mkdir -p "$(dirname "$dst/etc/$p")"
+            cp -a "/etc/$p" "$dst/etc/$p"
+        fi
+    done
+}
+
 transaction() {
-    new=$(date +%Y%m%d%H%M%S)
+    if mountpoint -q "$ROOT" || mountpoint -q "$ROOT/var"; then
+        die "a failed update left mounts in $ROOT; reboot first"
+    fi
+    new=$(next_id)
     dst=$TOP/@deployments/$new
-    [[ ! -e $dst ]] || die "deployment $new already exists; try again in a second"
+    [[ ! -e $dst ]] || die "deployment $new already exists"
 
     say "New deployment $new from $booted"
     btrfs subvolume snapshot "$TOP/@deployments/$booted" "$dst" >/dev/null
     trap cleanup EXIT
 
-    # pacman reads the deployment's own /etc (no overlay in the chroot), so
-    # carry over the live repository and mirror configuration.
-    cp /etc/pacman.conf "$dst/etc/pacman.conf"
-    cp -a /etc/pacman.d/. "$dst/etc/pacman.d/"
-    sed -i "s|subvol=/@deployments/$booted|subvol=/@deployments/$new|" "$dst/etc/kernel/cmdline"
-    grep -q "subvol=/@deployments/$new" "$dst/etc/kernel/cmdline" || die "could not set the kernel command line"
+    copy_live_etc pacman.conf pacman.d sysusers.d "${BOOT_CONFIG[@]}" "${ACCOUNTS[@]}"
+    sed -E -i "s#subvol=/?@deployments/[0-9]+#subvol=/@deployments/$new#" "$dst/etc/kernel/cmdline"
+    [[ $(grep -o 'subvol=/@deployments/[0-9]*' "$dst/etc/kernel/cmdline") == "subvol=/@deployments/$new" ]] \
+        || die "could not point the kernel command line at deployment $new"
 
     # The chroot root must be a mount point: pacman finds free space through
-    # the mount table ("could not determine root mount point" otherwise).
-    mkdir -p "$ROOT"
+    # the mount table. /var is the live, shared /var seen through an overlay
+    # with a throwaway upper layer, so package scripts cannot change live state
+    # (systemd-tmpfiles recreates what packages declare at the next boot). Only
+    # the package cache and logs are written for real.
+    mkdir -p "$ROOT" "$VARTMP/upper" "$VARTMP/work"
     mount --bind "$dst" "$ROOT"
-    mount --bind /var "$ROOT/var"
+    mount -t overlay overlay -o "lowerdir=/var,upperdir=$VARTMP/upper,workdir=$VARTMP/work" "$ROOT/var"
+    mount --bind /var/cache/pacman/pkg "$ROOT/var/cache/pacman/pkg"
+    mount --bind /var/log "$ROOT/var/log"
+
     arch-chroot "$ROOT" pacman "$@"
     say "Building the kernel image"
     arch-chroot "$ROOT" mkinitcpio -P
-    umount "$ROOT/var" "$ROOT"
+    unmount_chroot || die "could not unmount $ROOT"
     [[ -s $dst/boot/renner.efi ]] || die "no kernel image was built"
 
     btrfs property set -ts "$dst" ro true
     cp "$dst/boot/renner.efi" "$ESP/EFI/Linux/renner-$new+$TRIES.efi"
     finished=1
     trap - EXIT
+
+    # System accounts that packages added get the same IDs in the running
+    # system now, so files owned by them in /var match after the reboot.
+    local f
+    for f in "${ACCOUNTS[@]}"; do
+        if [[ -e $dst/etc/$f ]] && ! cmp -s "$dst/etc/$f" "/etc/$f"; then
+            cp -p "$dst/etc/$f" "/etc/$f"
+        fi
+    done
 
     prune
     say "Done. Deployment $new boots next; the previous one stays in the boot menu."
@@ -129,6 +201,6 @@ case ${1:-upgrade} in
     upgrade) mount_top; transaction -Syu --noconfirm ;;
     install) shift; (($#)) || die "install: no packages given"; mount_top; transaction -Syu --noconfirm --needed "$@" ;;
     remove) shift; (($#)) || die "remove: no packages given"; mount_top; transaction -Rns --noconfirm "$@" ;;
-    -h | --help) sed -n '2,17p' "$0" | sed 's/^# \{0,1\}//' ;;
+    -h | --help) sed -n '2,14p' "$0" | sed 's/^# \{0,1\}//' ;;
     *) die "unknown command '$1' (try --help)" ;;
 esac

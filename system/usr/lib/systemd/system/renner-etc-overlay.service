@@ -6,6 +6,11 @@ ConditionPathExists=/etc/initrd-release
 Requires=sysroot.mount
 After=sysroot.mount
 Before=initrd-root-fs.target initrd-parse-etc.service
+# Required by initrd-root-fs.target (see the mkinitcpio hook): if the overlay
+# cannot be mounted, boot stops in the emergency shell instead of continuing
+# with the deployment's default /etc. Boot with renner.etc=off to repair.
+OnFailure=emergency.target
+OnFailureJobMode=replace-irreversibly
 
 [Service]
 Type=oneshot

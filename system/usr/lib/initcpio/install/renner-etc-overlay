@@ -9,7 +9,9 @@ build() {
     add_module btrfs
     add_file /usr/lib/renner-os/initrd-etc-overlay /usr/lib/renner-os/initrd-etc-overlay 755
     add_file /usr/lib/systemd/system/renner-etc-overlay.service
-    add_symlink /usr/lib/systemd/system/initrd-root-fs.target.wants/renner-etc-overlay.service \
+    # requires, not wants: without the overlay, /etc would silently fall back
+    # to the deployment's defaults (old passwords, removed accounts, ...).
+    add_symlink /usr/lib/systemd/system/initrd-root-fs.target.requires/renner-etc-overlay.service \
         ../renner-etc-overlay.service
 }
 
