@@ -16,6 +16,8 @@ PlasmoidItem {
     // A normal Plasma popup above the start button: opens on the screen of
     // the panel that was clicked, and the Windows key opens it natively.
     preferredRepresentation: compactRepresentation
+    // The Windows key "activates" the launcher; let that open/close the popup.
+    activationTogglesExpanded: true
     Plasmoid.icon: Plasmoid.configuration.icon || "renner-start"
     toolTipMainText: i18n("Start")
     toolTipSubText: i18n("Search apps, settings and files")
