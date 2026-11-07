@@ -36,7 +36,9 @@ T=120 X sh -c 'set -e
     dev=$(findmnt -no SOURCE / | sed "s/\[.*//")
     mkdir -p /run/renner-push
     mount -o "subvol=$dep,compress=zstd:1,noatime" "$dev" /run/renner-push
-    trap "btrfs property set -ts /run/renner-push ro true; umount /run/renner-push" EXIT
+    # sync before locking: btrfs writes larger files lazily, and setting the
+    # read-only flag first left the 230 KB wallpaper empty (0 bytes).
+    trap "sync -f /run/renner-push; btrfs filesystem sync /run/renner-push; btrfs property set -ts /run/renner-push ro true; umount /run/renner-push" EXIT
     btrfs property set -ts /run/renner-push ro false
     tar -xf /tmp/theme.tar -C /run/renner-push --no-same-owner
     /usr/lib/renner-os/trim-themes /run/renner-push
