@@ -1,0 +1,9 @@
+[Common]
+OutlineCloseButton=false
+ShadowSize=ShadowLarge
+
+[Windows]
+DrawBorderOnMaximizedWindows=false
+
+[Style]
+MenuOpacity=95

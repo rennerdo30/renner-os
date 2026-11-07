@@ -1,0 +1,117 @@
+#!/usr/bin/env python3
+"""renner.dev OS color scheme, from the renner.dev brand tokens.
+
+Writes the KDE color scheme (usr/share/color-schemes/RennerDark.colors) and the
+same color groups into the system-wide kdeglobals defaults (etc/xdg/kdeglobals):
+KDE applications read their colors from kdeglobals, so a new user gets the
+scheme before anything is "applied". Run after changing a token:
+
+    python theme/colors.py
+"""
+from pathlib import Path
+
+SYSTEM = Path(__file__).resolve().parent.parent / "system"
+
+# Brand tokens (renner.dev website, launcher and installer).
+BG = "8,9,15"            # page background #08090f
+SURFACE = "15,17,26"     # windows #0f111a
+RAISED = "17,19,29"      # headers, panels #11131d
+HOVER = "24,27,40"       # buttons #181b28
+INPUT = "12,14,22"       # text fields, lists #0c0e16
+TEXT = "247,248,251"     # #f7f8fb
+MUTED = "155,165,185"    # #9ba5b9
+FAINT = "139,149,168"    # #8b95a8
+ACCENT = "255,122,26"    # orange #ff7a1a
+ACCENT_SOFT = "255,162,76"  # #ffa24c
+INK = "28,18,7"          # text on orange #1c1207
+CYAN = "45,226,240"      # #2de2f0
+FOCUS = "125,211,252"    # #7dd3fc
+SUCCESS = "61,220,151"   # #3ddc97
+DANGER = "255,92,122"    # #ff5c7a
+
+
+def group(background, alt, foreground=TEXT, decoration_hover=ACCENT_SOFT):
+    return {
+        "BackgroundNormal": background,
+        "BackgroundAlternate": alt,
+        "ForegroundNormal": foreground,
+        "ForegroundInactive": MUTED,
+        "ForegroundActive": ACCENT_SOFT,
+        "ForegroundLink": CYAN,
+        "ForegroundVisited": FOCUS,
+        "ForegroundNegative": DANGER,
+        "ForegroundNeutral": ACCENT_SOFT,
+        "ForegroundPositive": SUCCESS,
+        "DecorationFocus": ACCENT,
+        "DecorationHover": decoration_hover,
+    }
+
+
+GROUPS = {
+    "Colors:Window": group(SURFACE, RAISED),
+    "Colors:View": group(INPUT, SURFACE),
+    "Colors:Button": group(HOVER, RAISED),
+    "Colors:Header": group(RAISED, SURFACE),
+    "Colors:Header][Inactive": group(SURFACE, SURFACE),
+    "Colors:Tooltip": group(RAISED, SURFACE),
+    "Colors:Complementary": group(BG, SURFACE),
+    "Colors:Selection": {**group(ACCENT, ACCENT_SOFT, foreground=INK),
+                         "ForegroundInactive": INK, "ForegroundActive": INK},
+}
+WM = {
+    "activeBackground": RAISED, "activeForeground": TEXT, "activeBlend": RAISED,
+    "inactiveBackground": SURFACE, "inactiveForeground": FAINT, "inactiveBlend": SURFACE,
+}
+GENERAL = {"ColorScheme": "RennerDark", "Name": "renner.dev Dark", "shadeSortColumn": "true"}
+EFFECTS = {
+    "ColorEffects:Disabled": {"Color": SURFACE, "ColorAmount": "0", "ColorEffect": "0",
+                              "ContrastAmount": "0.65", "ContrastEffect": "1",
+                              "IntensityAmount": "0.1", "IntensityEffect": "2"},
+    "ColorEffects:Inactive": {"ChangeSelectionColor": "true", "Color": SURFACE,
+                              "ColorAmount": "0.025", "ColorEffect": "2", "ContrastAmount": "0.1",
+                              "ContrastEffect": "2", "Enable": "false",
+                              "IntensityAmount": "0", "IntensityEffect": "0"},
+}
+
+
+def render(sections: dict) -> str:
+    out = []
+    for name, values in sections.items():
+        out.append(f"[{name}]")
+        out += [f"{k}={v}" for k, v in values.items()]
+        out.append("")
+    return "\n".join(out)
+
+
+def main() -> None:
+    scheme = {"General": GENERAL, **EFFECTS, **GROUPS, "WM": WM,
+              "KDE": {"contrast": "4"}}
+    target = SYSTEM / "usr/share/color-schemes/RennerDark.colors"
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(render(scheme), newline="\n")
+
+    # System-wide defaults: colors plus look, fonts and icons.
+    kdeglobals = {
+        "General": {
+            "ColorScheme": "RennerDark",
+            "font": "Inter,10,-1,5,400,0,0,0,0,0,0,0,0,0,0,1",
+            "menuFont": "Inter,10,-1,5,400,0,0,0,0,0,0,0,0,0,0,1",
+            "toolBarFont": "Inter,9,-1,5,400,0,0,0,0,0,0,0,0,0,0,1",
+            "smallestReadableFont": "Inter,8,-1,5,400,0,0,0,0,0,0,0,0,0,0,1",
+            "fixed": "JetBrains Mono,10,-1,5,400,0,0,0,0,0,0,0,0,0,0,1",
+            "AccentColor": ACCENT,
+        },
+        "WM": {**WM, "activeFont": "Inter,10,-1,5,600,0,0,0,0,0,0,0,0,0,0,1"},
+        "Icons": {"Theme": "Papirus-Dark"},
+        "KDE": {"LookAndFeelPackage": "dev.renner.desktop", "widgetStyle": "Breeze",
+                "contrast": "4", "AnimationDurationFactor": "0.7"},
+        **EFFECTS, **GROUPS,
+    }
+    target = SYSTEM / "etc/xdg/kdeglobals"
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(render(kdeglobals), newline="\n")
+    print("wrote RennerDark.colors and etc/xdg/kdeglobals")
+
+
+if __name__ == "__main__":
+    main()

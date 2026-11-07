@@ -1,0 +1,13 @@
+{
+    "KPackageStructure": "Plasma/LookAndFeel",
+    "KPlugin": {
+        "Authors": [{ "Name": "renner.dev" }],
+        "Category": "",
+        "Description": "renner.dev OS: dark, calm, one taskbar",
+        "Id": "dev.renner.desktop",
+        "License": "GPL-2.0-or-later",
+        "Name": "renner.dev",
+        "Version": "0.1"
+    },
+    "X-Plasma-APIVersion": "2"
+}

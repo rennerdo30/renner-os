@@ -51,6 +51,21 @@ SYSTEM_FILES=(
     etc/xdg/menus/applications-merged/renner-windows.menu
     usr/lib/modules-load.d/renner-ntsync.conf
     usr/lib/udev/rules.d/70-renner-ntsync.rules
+    # The renner.dev look (theme/): colors, global theme and layout, wallpaper,
+    # system-wide KDE defaults, login screen background.
+    usr/share/color-schemes/RennerDark.colors
+    usr/share/plasma/look-and-feel/dev.renner.desktop/metadata.json
+    usr/share/plasma/look-and-feel/dev.renner.desktop/contents/defaults
+    usr/share/plasma/look-and-feel/dev.renner.desktop/contents/layouts/org.kde.plasma.desktop-layout.js
+    usr/share/wallpapers/renner/metadata.json
+    usr/share/wallpapers/renner/contents/images/3840x2160.png
+    usr/share/renner-os/start.svg
+    usr/share/sddm/themes/breeze/theme.conf.user
+    etc/xdg/kdeglobals
+    etc/xdg/kwinrc
+    etc/xdg/breezerc
+    etc/xdg/ksplashrc
+    etc/xdg/kscreenlockerrc
 )
 
 PACKAGES=(
@@ -61,7 +76,13 @@ PACKAGES=(
 
 # KDE Plasma desktop. The look (renner theme) comes later as its own package.
 DESKTOP_PACKAGES=(
-    plasma-meta sddm
+    # Plasma, picked by hand instead of plasma-meta: no Welcome Center, crash
+    # reporter, vaults, browser integration or other extras.
+    plasma-desktop kwin systemsettings sddm sddm-kcm powerdevil plasma-nm plasma-pa
+    bluedevil kscreen kde-gtk-config breeze-gtk xdg-desktop-portal-kde kwallet-pam
+    ksshaskpass polkit-kde-agent kmenuedit plasma-systemmonitor plasma-disks
+    plasma-thunderbolt print-manager kdeplasma-addons discover flatpak-kcm kinfocenter
+    breeze papirus-icon-theme
     konsole dolphin kate ark spectacle gwenview okular kcalc filelight partitionmanager
     ffmpegthumbs kdegraphics-thumbnailers kio-extras
     pipewire pipewire-pulse pipewire-alsa pipewire-jack wireplumber

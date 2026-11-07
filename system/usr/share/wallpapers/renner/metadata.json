@@ -1,0 +1,12 @@
+{
+  "KPlugin": {
+    "Id": "renner",
+    "Name": "renner.dev",
+    "License": "CC-BY-SA-4.0",
+    "Authors": [
+      {
+        "Name": "renner.dev"
+      }
+    ]
+  }
+}
