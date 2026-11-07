@@ -1,0 +1,12 @@
+[Trigger]
+Operation = Install
+Operation = Upgrade
+Type = Path
+Target = etc/os-release
+Target = usr/lib/os-release
+Target = etc/issue
+
+[Action]
+Description = renner.dev OS: system name (os-release, login banner)...
+When = PostTransaction
+Exec = /usr/lib/renner-os/brand

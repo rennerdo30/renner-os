@@ -12,6 +12,7 @@ usr/lib/modules-load.d/renner-ntsync.conf
 usr/lib/renner-os/activate
 usr/lib/renner-os/apps-finish
 usr/lib/renner-os/boot-health
+usr/lib/renner-os/brand
 usr/lib/renner-os/essential.units
 usr/lib/renner-os/initrd-etc-overlay
 usr/lib/renner-os/renner-exe-binfmt
@@ -39,6 +40,7 @@ usr/share/icons/hicolor/256x256/apps/renner-launcher.png
 usr/share/icons/hicolor/scalable/apps/kwil.svg
 usr/share/icons/hicolor/scalable/apps/renner-start.svg
 usr/share/kio/servicemenus/renner-exe.desktop
+usr/share/libalpm/hooks/80-renner-brand.hook
 usr/share/libalpm/hooks/90-renner-trim-themes.hook
 usr/share/plasma/desktoptheme/renner/dialogs/background.svg
 usr/share/plasma/desktoptheme/renner/metadata.json
@@ -63,6 +65,8 @@ usr/share/plasma/plasmoids/dev.renner.start/contents/ui/ItemRow.qml
 usr/share/plasma/plasmoids/dev.renner.start/contents/ui/Launcher.qml
 usr/share/plasma/plasmoids/dev.renner.start/contents/ui/main.qml
 usr/share/plasma/plasmoids/dev.renner.start/metadata.json
+usr/share/renner-os/issue
+usr/share/renner-os/os-release
 usr/share/renner-os/xdg/breezerc
 usr/share/renner-os/xdg/darklyrc
 usr/share/renner-os/xdg/kdeglobals

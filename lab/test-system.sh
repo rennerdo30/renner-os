@@ -64,4 +64,6 @@ check "defaults in the image"    "renner-os/xdg"  cat /usr/lib/environment.d/40-
 check "app colors defined"      "Colors:View"    grep -o Colors:View /usr/share/renner-os/xdg/kdeglobals
 check "dev tools out of the menu" "^2 *$"    sh -c 'grep -l ^NoDisplay=true /usr/share/applications/linguist.desktop /usr/share/applications/qdbusviewer.desktop | wc -l'
 check "start: Windows key"      "Alt\+F1"     sh -c 'grep -h -A1 "\[Shortcuts\]" /home/tom/.config/plasma-org.kde.plasma.desktop-appletsrc'
+check "name: os-release"       "renner.dev OS"  sh -c 'grep ^PRETTY_NAME /etc/os-release'
+check "name: boot menu"        "renner.dev OS"  sh -c 'bootctl list --no-pager 2>/dev/null | grep -m1 title'
 exit $failed

@@ -1,0 +1,8 @@
+NAME="renner.dev OS"
+PRETTY_NAME="renner.dev OS"
+ID=renneros
+ID_LIKE=arch
+BUILD_ID=rolling
+ANSI_COLOR="38;2;255;122;26"
+HOME_URL="https://renner.dev/"
+LOGO=renner-start

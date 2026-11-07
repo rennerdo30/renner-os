@@ -366,10 +366,12 @@ install_system_files() {
             usr/bin/* | usr/lib/renner-os/activate | usr/lib/renner-os/boot-health \
                 | usr/lib/renner-os/initrd-etc-overlay | usr/lib/renner-os/renner-exe-binfmt \
                 | usr/lib/renner-os/apps-finish | usr/lib/renner-os/trim-themes \
-                | usr/lib/renner-os/userdb-generate) mode=755 ;;
+                | usr/lib/renner-os/userdb-generate | usr/lib/renner-os/brand) mode=755 ;;
         esac
         install -Dm"$mode" "$STAGING/$f" "$TARGET/$f"
     done
+    # The system's name: renner.dev OS, not Arch Linux (boot menu, boot, login).
+    sh "$TARGET/usr/lib/renner-os/brand" "$TARGET"
 }
 
 configure_system() {

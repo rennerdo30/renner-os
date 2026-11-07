@@ -1,0 +1,16 @@
+#!/bin/sh
+# renner.dev OS: the system's name (owner, 2026-11-08: the boot said
+# "archlinux" — "rename!"). /etc/os-release takes precedence over Arch's
+# /usr/lib/os-release; it names the boot menu entry (ukify reads it into the
+# kernel image), the "Welcome to ..." line of the boot and tools like
+# hostnamectl. /etc/issue is the text console's login banner.
+# Runs at install and as a pacman hook (80-renner-brand) after updates of the
+# filesystem package, before the kernel images are rebuilt (90-mkinitcpio).
+#   brand [ROOT]
+set -eu
+root=${1:-}
+src=$root/usr/share/renner-os
+rm -f "$root/etc/os-release" "$root/etc/issue"
+cp "$src/os-release" "$root/etc/os-release"
+cp "$src/issue" "$root/etc/issue"
+chmod 644 "$root/etc/os-release" "$root/etc/issue"
