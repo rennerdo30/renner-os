@@ -481,7 +481,8 @@ export component InstallerWindow inherits Window {
             return reject;
         }
 
-        // The card with the 1px orange-to-cyan edge (platform sign-in card).
+        // The card (platform sign-in card style); the orange-to-cyan edge is
+        // drawn as a light line along its top, see below.
         edge := Rectangle {
             property <length> w: min(root.width - 48px, 1100px);
             property <length> h: min(root.height - 48px, 680px);
@@ -490,7 +491,9 @@ export component InstallerWindow inherits Window {
             x: (root.width - w) / 2;
             y: root.osk-visible ? 24px : (root.height - h) / 2;
             border-radius: 22px;
-            background: Brand.edge;
+            background: Brand.raised;
+            border-width: 1px;
+            border-color: #ffffff1a;
             drop-shadow-blur: 72px;
             drop-shadow-offset-y: 32px;
             drop-shadow-color: #000000cc;
@@ -502,7 +505,6 @@ export component InstallerWindow inherits Window {
                 width: parent.width - 2px;
                 height: parent.height - 2px;
                 border-radius: 21px;
-                background: Brand.raised;
                 clip: true;
 
                 HorizontalLayout {
@@ -792,6 +794,15 @@ export component InstallerWindow inherits Window {
                     }
                 }
             }
+        }
+
+        Rectangle {
+            x: edge.x + 28px;
+            y: edge.y;
+            width: edge.width - 56px;
+            height: 1px;
+            background: Brand.edge;
+            animate y { duration: 200ms; easing: ease-out; }
         }
 
         // Footer: keyboard hints, so keyboard-only users know the keys.

@@ -44,18 +44,42 @@ pub fn build(config: &InstallConfig, inventory: &Inventory, resolved_device: &st
         bail!("the install cannot start:\n  - {}", problems.join("\n  - "));
     }
     let g = &inventory.gpu;
-    let gpu_summary = if g.gpus.is_empty() {
-        "no display controller found; generic graphics drivers".to_string()
-    } else {
-        let names: Vec<String> = g.gpus.iter().map(|x| format!("{} {:04x}:{:04x}", x.vendor, x.vendor_id, x.device_id)).collect();
-        format!("{} → NVIDIA driver: {}", names.join(", "), g.nvidia_driver)
-    };
+    let gpu_summary = gpu_summary(g);
     Ok(Plan {
         config: config.clone(),
         disk: disk.expect("checked above"),
         gpu_summary,
         packages_extra: if config.options.desktop { g.packages.iter().map(|s| s.to_string()).collect() } else { vec![] },
     })
+}
+
+/// The graphics hardware and driver in plain words, e.g.
+/// "NVIDIA graphics · NVIDIA driver (open modules)" or
+/// "Intel graphics + NVIDIA graphics · NVIDIA driver (open modules), switchable".
+pub fn gpu_summary(g: &crate::detect::GpuProfile) -> String {
+    if g.gpus.is_empty() {
+        return "No graphics card found · standard driver".to_string();
+    }
+    let mut names: Vec<&str> = g
+        .gpus
+        .iter()
+        .map(|x| match x.vendor {
+            "amd" => "AMD graphics",
+            "intel" => "Intel graphics",
+            "nvidia" => "NVIDIA graphics",
+            _ => "Virtual graphics",
+        })
+        .collect();
+    names.dedup();
+    let driver = match g.nvidia_driver {
+        "open" => "NVIDIA driver (open modules)",
+        "legacy-580" => "open nouveau driver for now (this NVIDIA card needs the 580 driver)",
+        "nouveau" => "open nouveau driver",
+        _ if g.gpus.iter().all(|x| x.vendor == "other") => "standard driver",
+        _ => "open Mesa drivers",
+    };
+    let switchable = if g.gpus.len() > 1 { ", switchable" } else { "" };
+    format!("{} · {driver}{switchable}", names.join(" + "))
 }
 
 impl Plan {
@@ -128,6 +152,17 @@ mod tests {
              [user]\nname = \"test\"\npassword_hash = \"$6$saltsalt$abcdefghijklmnopqrstuvwxyz0123456789\"\n"
         ))
         .unwrap()
+    }
+
+    #[test]
+    fn graphics_in_plain_words() {
+        assert_eq!(gpu_summary(&classify_gpus(&[(0x1AF4, 0x1050)])), "Virtual graphics · standard driver");
+        assert_eq!(gpu_summary(&classify_gpus(&[(0x1002, 0x744C)])), "AMD graphics · open Mesa drivers");
+        assert_eq!(
+            gpu_summary(&classify_gpus(&[(0x8086, 0xA780), (0x10DE, 0x2684)])),
+            "Intel graphics + NVIDIA graphics · NVIDIA driver (open modules), switchable"
+        );
+        assert!(gpu_summary(&classify_gpus(&[(0x10DE, 0x1B80)])).contains("580"));
     }
 
     #[test]
