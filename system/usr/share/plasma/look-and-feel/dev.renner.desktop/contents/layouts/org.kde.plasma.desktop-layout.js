@@ -27,7 +27,7 @@ tasks.writeConfig("launchers", [
     "applications:renner-launcher.desktop"
 ]);
 tasks.writeConfig("groupingStrategy", "1");
-tasks.writeConfig("iconSpacing", "2");
+tasks.writeConfig("iconSpacing", "0");   // tight, like Windows (owner: "horizontal spacing way too big")
 
 panel.addWidget("org.kde.plasma.marginsseparator");
 var tray = panel.addWidget("org.kde.plasma.systemtray");
