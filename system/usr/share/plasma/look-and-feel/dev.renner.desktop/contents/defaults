@@ -8,7 +8,7 @@ Theme=Papirus-Dark
 widgetStyle=Breeze
 
 [plasmarc][Theme]
-name=default
+name=renner
 
 [kcminputrc][Mouse]
 cursorTheme=breeze_cursors

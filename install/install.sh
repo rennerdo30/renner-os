@@ -32,48 +32,8 @@ LOG=/tmp/renner-install.log
 TARGET=/mnt
 STAGING=/tmp/renner-install
 
-SYSTEM_FILES=(
-    usr/bin/renner-update
-    usr/bin/renner-gpu-detect
-    usr/lib/renner-os/initrd-etc-overlay
-    usr/lib/systemd/system/renner-etc-overlay.service
-    usr/lib/initcpio/install/renner-etc-overlay
-    usr/lib/renner-os/activate
-    usr/lib/renner-os/boot-health
-    usr/lib/renner-os/essential.units
-    usr/lib/systemd/system/renner-activate-accounts.service
-    usr/lib/systemd/system/renner-activate-var.service
-    usr/lib/systemd/system/renner-boot-health.service
-    usr/bin/renner-exe
-    usr/lib/renner-os/renner-exe-binfmt
-    usr/lib/binfmt.d/renner-exe.conf
-    usr/share/applications/renner-exe.desktop
-    usr/share/kio/servicemenus/renner-exe.desktop
-    usr/share/desktop-directories/renner-windows.directory
-    etc/xdg/mimeapps.list
-    etc/xdg/menus/applications-merged/renner-windows.menu
-    usr/lib/modules-load.d/renner-ntsync.conf
-    usr/lib/udev/rules.d/70-renner-ntsync.rules
-    # The renner.dev look (theme/): colors, global theme and layout, wallpaper,
-    # system-wide KDE defaults, login screen background.
-    usr/share/color-schemes/RennerDark.colors
-    usr/share/plasma/look-and-feel/dev.renner.desktop/metadata.json
-    usr/share/plasma/look-and-feel/dev.renner.desktop/contents/defaults
-    usr/share/plasma/look-and-feel/dev.renner.desktop/contents/layouts/org.kde.plasma.desktop-layout.js
-    usr/share/wallpapers/renner/metadata.json
-    usr/share/wallpapers/renner/contents/images/3840x2160.png
-    usr/share/icons/hicolor/scalable/apps/renner-start.svg
-    usr/share/icons/hicolor/scalable/apps/kwil.svg
-    usr/share/applications/kwil.desktop
-    usr/share/applications/renner-launcher.desktop
-    usr/bin/renner-launcher
-    usr/share/sddm/themes/breeze/theme.conf.user
-    etc/xdg/kdeglobals
-    etc/xdg/kwinrc
-    etc/xdg/breezerc
-    etc/xdg/ksplashrc
-    etc/xdg/kscreenlockerrc
-)
+# The files under system/ come from system/MANIFEST (theme/manifest.py writes it).
+SYSTEM_FILES=()
 
 PACKAGES=(
     base linux linux-firmware amd-ucode intel-ucode
@@ -192,6 +152,8 @@ fetch_system_files() {
     say "Fetching renner.dev OS files from $SOURCE"
     rm -rf "$STAGING"
     local f
+    mapfile -t SYSTEM_FILES < <(curl -fsSL --retry 2 "$SOURCE/system/MANIFEST")         || die "cannot fetch the file list $SOURCE/system/MANIFEST"
+    ((${#SYSTEM_FILES[@]} > 10)) || die "the file list $SOURCE/system/MANIFEST is empty"
     for f in "${SYSTEM_FILES[@]}"; do
         mkdir -p "$STAGING/$(dirname "$f")"
         curl -fsSL --retry 2 -o "$STAGING/$f" "$SOURCE/system/$f" || die "download failed: $f"

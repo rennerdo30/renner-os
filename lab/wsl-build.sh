@@ -24,6 +24,8 @@ steps=("$@")
 for step in "${steps[@]}"; do
     case $step in
         installer)
+            echo "==> system/MANIFEST up to date"
+            python3 "$REPO/theme/manifest.py" --check
             echo "==> package names in install.sh"
             missing=$(bash "$REPO/lab/pkgcheck.sh" "$REPO/install/install.sh" | grep MISSING || true)
             [[ -z $missing ]] || { echo "$missing" >&2; exit 1; }

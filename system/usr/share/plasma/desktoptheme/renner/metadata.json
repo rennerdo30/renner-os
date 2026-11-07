@@ -1,0 +1,16 @@
+{
+  "KPackageStructure": "Plasma/Theme",
+  "KPlugin": {
+    "Id": "renner",
+    "Name": "renner.dev",
+    "Description": "renner.dev OS Plasma style",
+    "License": "GPL-2.0-or-later",
+    "Version": "0.1",
+    "Authors": [
+      {
+        "Name": "renner.dev"
+      }
+    ]
+  },
+  "X-Plasma-API": "5.0"
+}
