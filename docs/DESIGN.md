@@ -51,8 +51,8 @@ the rest of Arch, and the install script stays small.
 True SteamOS-style A/B depends on shipping finished images, and step 1 does not.
 The closest match with plain Arch packages:
 
-- **Read-only root on btrfs, updates as a transaction** (recommended; owner
-  decision pending). `renner-update` snapshots the root, runs `pacman -Syu`
+- **Read-only root on btrfs, updates as a transaction** (owner decision
+  2026-11-07). `renner-update` snapshots the root, runs `pacman -Syu`
   inside the new snapshot, and makes it the default for the next boot. The
   running system never changes mid-update. The update is all or nothing.
 - **Every earlier state is a boot menu entry**, so rolling back is one pick at
@@ -64,8 +64,8 @@ The closest match with plain Arch packages:
   `/home`. Host `pacman` runs only through `renner-update`.
 - **Escape hatch:** `renner-os unlock` makes the current root writable until the
   next update, for developers.
-- Simpler alternative, if the owner prefers it: a writable root plus automatic
-  snapshots before every update (like CachyOS). It is easier but not immutable.
+- Rejected alternative: a writable root plus automatic snapshots before every
+  update (like CachyOS). It is easier but not immutable.
 
 Steps 2 and 3 keep this layout, so an install from the media creator or our own
 ISO behaves the same.
@@ -170,10 +170,13 @@ lab/                  QEMU test lab and package cache
 Across all steps: the theme as real design work, Secure Boot (our own key,
 enrolled by the installer), and the owner moving onto it as a daily driver.
 
-## Owner decisions still open
+## Owner decisions
 
-- Immutability model: read-only btrfs root with transactional updates
-  (recommended) or writable root with snapshots.
-- Where the script and the `renner-os` repo are hosted (publication needs the owner's yes).
-- Repository visibility for this project.
-- Final product name (whether "renner.dev OS" stays) and the accent colour.
+- 2026-11-07: immutability via a read-only btrfs root with transactional updates.
+- 2026-11-07: the project, the install script and the `renner-os` package repo
+  live in a **public GitHub repository**. CI runs on GitHub-hosted runners (free
+  for public repos; no self-hosted runner for a public repo). Each publication
+  (creating the repo, a script release, the package repo going live) still
+  needs the owner's yes.
+
+Still open: final product name (whether "renner.dev OS" stays) and the accent colour.
