@@ -1,0 +1,22 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+      - name: Compile check
+        run: python3 -m py_compile packages/renner-gpu/renner-gpu-detect lab/lab.py lab/pkgcache.py
+      - name: Shell syntax
+        run: bash -n packages/renner-exe/renner-exe
+      - name: Unit tests
+        run: python3 -m unittest discover -s tests -v
