@@ -3,6 +3,8 @@
 # the guest agent (the password is the one place where typing is unavoidable).
 #   VM=smoke lab/login.sh [USER] [PASSWORD]
 set -u
+# Git Bash would rewrite /home/... arguments into Windows paths.
+export MSYS_NO_PATHCONV=1
 cd "$(dirname "$0")/.."
 VM=${VM:-smoke}
 USER_NAME=${1:-tom}

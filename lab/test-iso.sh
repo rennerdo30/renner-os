@@ -5,6 +5,8 @@
 # waits for the page it should reach, so nothing depends on click timing.
 #   VM=smoke lab/test-iso.sh       account: tom / pw1, keyboard German, Europe/Berlin
 set -u
+# Git Bash would rewrite /home/... arguments into Windows paths.
+export MSYS_NO_PATHCONV=1
 VM=${VM:-inst}
 cd "$(dirname "$0")/.."
 L() { python lab/lab.py "$@"; }

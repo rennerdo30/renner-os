@@ -4,6 +4,8 @@
 # QEMU guest agent: no typing into the desktop, every step checks its result.
 #   VM=smoke lab/test-exe.sh [URL]      default: the Battle.net installer
 set -u
+# Git Bash would rewrite /home/... arguments into Windows paths.
+export MSYS_NO_PATHCONV=1
 cd "$(dirname "$0")/.."
 VM=${VM:-smoke}
 USER_NAME=${USER_NAME:-tom}
