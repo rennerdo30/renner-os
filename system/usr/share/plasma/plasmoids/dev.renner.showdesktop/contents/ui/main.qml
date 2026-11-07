@@ -16,9 +16,10 @@ PlasmoidItem {
 
     fullRepresentation: MouseArea {
         id: area
-        Layout.minimumWidth: Kirigami.Units.smallSpacing * 3
-        Layout.preferredWidth: Kirigami.Units.smallSpacing * 3
-        Layout.maximumWidth: Kirigami.Units.smallSpacing * 3
+        // A sliver, like Windows (owner, 2026-11-08: "still too wide").
+        Layout.minimumWidth: 5
+        Layout.preferredWidth: 5
+        Layout.maximumWidth: 5
         Layout.fillHeight: true
         hoverEnabled: true
         acceptedButtons: Qt.LeftButton
@@ -27,7 +28,7 @@ PlasmoidItem {
             anchors.left: parent.left
             anchors.verticalCenter: parent.verticalCenter
             width: 1
-            height: parent.height * 0.55
+            height: parent.height * 0.45
             color: Kirigami.Theme.textColor
             opacity: area.containsMouse ? 0.55 : 0.18
             Behavior on opacity { NumberAnimation { duration: 120 } }

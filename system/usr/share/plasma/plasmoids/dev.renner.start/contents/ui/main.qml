@@ -13,12 +13,9 @@ import org.kde.plasma.private.kicker as Kicker
 PlasmoidItem {
     id: root
 
-    // Like Plasma's Application Dashboard: the panel button is the "full"
-    // representation (no popup of Plasma's own), our window opens on click.
-    preferredRepresentation: fullRepresentation
-    compactRepresentation: null
-    switchWidth: 0
-    switchHeight: 0
+    // A normal Plasma popup above the start button: opens on the screen of
+    // the panel that was clicked, and the Windows key opens it natively.
+    preferredRepresentation: compactRepresentation
     Plasmoid.icon: Plasmoid.configuration.icon || "renner-start"
     toolTipMainText: i18n("Start")
     toolTipSubText: i18n("Search apps, settings and files")
@@ -58,55 +55,33 @@ PlasmoidItem {
         favoritesModel: pinnedApps
     }
 
-    // The layer is its own window (Kicker.DashboardWindow), not an Item.
-    property var launcher: null
-
-    function toggle() {
-        if (!launcher) {
-            launcher = launcherComponent.createObject(root);
-        }
-        launcher.toggle();
+    fullRepresentation: Launcher {
+        // Distinct ids: `appsModel: appsModel` would bind the property to itself.
+        appsModel: root.allApps
+        pinnedModel: pinnedApps
+        runnerModel: searchResults
+        onDone: root.expanded = false
     }
 
-    Component {
-        id: launcherComponent
-        Launcher {
-            // Distinct ids: `appsModel: appsModel` would bind the property to itself.
-            appsModel: allApps
-            pinnedModel: pinnedApps
-            runnerModel: searchResults
-            visualParent: root.fullRepresentationItem
+    onExpandedChanged: (expanded) => {
+        if (expanded && root.fullRepresentationItem) {
+            root.fullRepresentationItem.reset();
         }
     }
 
-    fullRepresentation: MouseArea {
+    compactRepresentation: MouseArea {
         id: button
         // A square as tall as the panel (without a size the panel lays it out at 0 px).
         Layout.minimumWidth: height
         Layout.preferredWidth: height
         Layout.maximumWidth: height
         hoverEnabled: true
-        onClicked: root.toggle()
+        onClicked: root.expanded = !root.expanded
         Kirigami.Icon {
             anchors.fill: parent
             anchors.margins: 2
             source: Plasmoid.icon || "renner-start"
             active: button.containsMouse
         }
-    }
-
-    // The Windows key: Plasma activates the launcher applet.
-    Connections {
-        target: Plasmoid
-        function onActivated() {
-            // After Plasma's own handling of the key (it toggles `expanded`
-            // and moves focus), or our window loses focus and closes at once.
-            openLater.restart();
-        }
-    }
-    Timer {
-        id: openLater
-        interval: 60
-        onTriggered: root.toggle()
     }
 }
