@@ -238,6 +238,10 @@ def cmd_up(a) -> None:
         # Second serial port (ttyS1): the installer's lab control channel.
         "-chardev", f"socket,id=ctl,host=127.0.0.1,port={ctl_port(state)},server=on,wait=off",
         "-device", "isa-serial,chardev=ctl",
+        # QEMU guest agent (installed systems): lab.py exec runs commands inside.
+        "-device", "virtio-serial-pci",
+        "-chardev", f"socket,id=qga,host=127.0.0.1,port={qga_port(state)},server=on,wait=off",
+        "-device", "virtserialport,chardev=qga,name=org.qemu.guest_agent.0",
         "-serial", f"file:{d / 'serial.log'}",
         "-vnc", f"127.0.0.1:{state['vnc_display']}",
         "-display", "sdl" if a.window else "none",
@@ -361,6 +365,71 @@ def cmd_key(a) -> None:
 
 def ctl_port(state: dict) -> int:
     return state["qmp_port"] + 100
+
+
+def qga_port(state: dict) -> int:
+    return state["qmp_port"] + 200
+
+
+def guest_exec(name: str, argv: list[str], timeout: float = 60.0) -> tuple[int, str, str]:
+    """Run argv inside the guest (as root) through the QEMU guest agent."""
+    import base64
+    state = load_state(name)
+    with socket.create_connection(("127.0.0.1", qga_port(state)), timeout=10) as s:
+        buf = b""
+
+        def call(execute, **arguments):
+            nonlocal buf
+            s.sendall(json.dumps({"execute": execute, "arguments": arguments}).encode() + b"\n")
+            while True:
+                while b"\n" not in buf:
+                    chunk = s.recv(65536)
+                    if not chunk:
+                        raise ConnectionError("guest agent closed the connection")
+                    buf += chunk
+                line, buf = buf.split(b"\n", 1)
+                if not line.strip():
+                    continue
+                msg = json.loads(line)
+                if "error" in msg:
+                    raise RuntimeError(f"guest agent {execute}: {msg['error'].get('desc')}")
+                if "return" in msg:
+                    return msg["return"]
+
+        # Resynchronise: a stale reply from an earlier client could be queued.
+        token = secrets.randbelow(1 << 30)
+        s.sendall(b"\xff")
+        while call("guest-sync-delimited", id=token) != token:
+            pass
+        pid = call("guest-exec", path=argv[0], arg=argv[1:], **{"capture-output": True})["pid"]
+        end = time.time() + timeout
+        while time.time() < end:
+            st = call("guest-exec-status", pid=pid)
+            if st.get("exited"):
+                out = base64.b64decode(st.get("out-data", "")).decode(errors="replace")
+                err = base64.b64decode(st.get("err-data", "")).decode(errors="replace")
+                return st.get("exitcode", -1), out, err
+            time.sleep(0.5)
+    raise TimeoutError(f"{argv[0]} did not finish in {timeout:.0f} s")
+
+
+def cmd_exec(a) -> None:
+    """lab.py exec VM [--timeout S] [--wait-agent S] -- CMD ARGS..."""
+    argv = a.argv[1:] if a.argv and a.argv[0] == "--" else a.argv
+    if not argv:
+        sys.exit("lab: exec needs a command")
+    end = time.time() + a.wait_agent
+    while True:
+        try:
+            code, out, err = guest_exec(a.name, argv, a.timeout)
+            break
+        except (OSError, ConnectionError, RuntimeError) as e:
+            if time.time() >= end:
+                sys.exit(f"lab: guest agent not reachable: {e}")
+            time.sleep(3)
+    sys.stdout.write(out)
+    sys.stderr.write(err)
+    sys.exit(code)
 
 
 def ui_command(name: str, line: str, timeout: float = 15.0) -> str:
@@ -606,6 +675,10 @@ def main() -> None:
     s.set_defaults(f=cmd_click)
     s = sub.add_parser("type"); s.add_argument("name"); s.add_argument("text"); s.add_argument("--enter", action="store_true")
     s.set_defaults(f=cmd_type)
+    s = sub.add_parser("exec", help="run a command in the installed system (QEMU guest agent)")
+    s.add_argument("name"); s.add_argument("argv", nargs=argparse.REMAINDER)
+    s.add_argument("--timeout", type=float, default=60); s.add_argument("--wait-agent", type=float, default=0)
+    s.set_defaults(f=cmd_exec)
     s = sub.add_parser("ui", help="drive the installer over its control channel (renner.test=1)")
     s.add_argument("name"); s.add_argument("command", nargs="*")
     s.add_argument("--wait-page", type=int); s.add_argument("--fail-page", type=int)

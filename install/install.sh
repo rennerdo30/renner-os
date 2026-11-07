@@ -395,6 +395,14 @@ EOF
     arch-chroot "$TARGET" systemctl enable NetworkManager.service systemd-timesyncd.service \
         systemd-boot-update.service renner-activate-accounts.service renner-activate-var.service \
         renner-boot-health.service >/dev/null
+    # In a virtual machine: the QEMU guest agent, so the host can shut it down
+    # cleanly and tools can talk to it (it only starts when QEMU offers it).
+    if [[ $(cat /sys/class/dmi/id/sys_vendor 2>/dev/null) == QEMU \
+        || $(systemd-detect-virt 2>/dev/null) =~ ^(kvm|qemu)$ ]]; then
+        arch-chroot "$TARGET" pacman -S --noconfirm --needed qemu-guest-agent >/dev/null \
+            || die "could not install the QEMU guest agent"
+        arch-chroot "$TARGET" systemctl enable qemu-guest-agent.service >/dev/null 2>&1 || true
+    fi
     # Finishes Flatpak apps the installer could not (it does nothing otherwise).
     if ((DESKTOP)); then arch-chroot "$TARGET" systemctl enable renner-apps.service >/dev/null; fi
 }
