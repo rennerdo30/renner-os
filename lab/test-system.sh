@@ -36,6 +36,7 @@ check "zram swap"               "zram0"          sh -c 'swapon --show=NAME --noh
 check "vm.max_map_count"        "2147483642"     sysctl -n vm.max_map_count
 check "vm.swappiness"           "^180"           sysctl -n vm.swappiness
 check "kernel command line"     "zswap.enabled=0" cat /proc/cmdline
+check "btrfs compression on /"  "compress=zstd:1" findmnt -no OPTIONS /
 check "split locks not slowed"  "^0"             sysctl -n kernel.split_lock_mitigate
 check "GameMode (on request)"   "gamemoderun"    sh -c 'command -v gamemoderun'
 check "power profiles"          "^active"         systemctl is-active power-profiles-daemon
