@@ -365,7 +365,8 @@ install_system_files() {
         case $f in
             usr/bin/* | usr/lib/renner-os/activate | usr/lib/renner-os/boot-health \
                 | usr/lib/renner-os/initrd-etc-overlay | usr/lib/renner-os/renner-exe-binfmt \
-                | usr/lib/renner-os/apps-finish | usr/lib/renner-os/trim-themes) mode=755 ;;
+                | usr/lib/renner-os/apps-finish | usr/lib/renner-os/trim-themes \
+                | usr/lib/renner-os/userdb-generate) mode=755 ;;
         esac
         install -Dm"$mode" "$STAGING/$f" "$TARGET/$f"
     done
@@ -480,6 +481,9 @@ EOF
 
 complete_deployment() {
     say "Finishing"
+    # System accounts of this first deployment as userdb records, like every
+    # later deployment gets them from renner-update.
+    bash "$TARGET/usr/lib/renner-os/userdb-generate" "$TARGET"
     # Same completion contract as renner-update: marker, then read-only last.
     install -Dm644 /dev/null "$TARGET/usr/lib/renner-os/deployment-complete"
     install -d "$TARGET/var/lib/renner-os/activated"

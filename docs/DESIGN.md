@@ -118,22 +118,31 @@ The closest match with plain Arch packages:
   A failed transaction deletes its snapshot and boot entry; anything left
   unfinished is removed by the next update. It keeps 3 finished deployments
   plus the booted one.
-- **Activation** follows a manifest that `renner-update` writes into each
-  deployment (`/usr/lib/renner-os/activation/`): the groups and users this
-  transaction added (account lists before and after pacman, compared by name)
-  and the package-owned paths under `/var` (`pacman -Qlq`). Only the manifest
-  is applied, never the account databases as a whole, so deleted or renamed
-  local users stay that way. It only adds, so rollback stays safe:
-  - `renner-activate-accounts.service` (every boot, before `systemd-sysusers`;
-    needs only `/etc`, which the initramfs mounts): checks every manifest
-    entry first (an existing name must have the staged IDs; a missing one needs
-    free IDs) and changes nothing on any conflict; then `groupadd`/`useradd`,
-    and `pwconv`/`grpconv` for missing shadow entries.
+- **System accounts travel with the version (owner decision 2026-11-07,
+  systemd userdb):** `userdb-generate` turns the deployment's system users and
+  groups (ID 1-999) into JSON records in its read-only `/usr/lib/userdb/`
+  (installer for the first deployment, `renner-update` for every later one).
+  `nss-systemd` reads them after `/etc/passwd` (`passwd: files systemd`).
+  - A rollback restores the matching system accounts; nothing is replayed into
+    `/etc` at boot.
+  - Local users (ID 1000+) never get records: deleting or renaming one is
+    permanent. Memberships are recorded only for system-user members, so a
+    local user removed from a group (e.g. `wheel`) stays removed.
+  - A system account a package needs comes back with every version that has
+    that package (like Fedora's `nss-altfiles` model).
+  - Only files listed in `/usr/lib/renner-os/userdb.list.files` are replaced; a
+    record a package ships itself is never touched.
+- **Boot checks and `/var` seeding:**
+  - `renner-activate-accounts.service` (every boot, before `systemd-sysusers`)
+    changes nothing: it fails when a local account in `/etc` holds a UID or GID
+    of this version's system accounts under another name (files win over
+    userdb), which withholds the boot-counting mark.
   - `renner-activate-var.service` (first boot of each deployment; requires the
-    account step to have succeeded): creates only the manifest's paths that
-    do not exist in the shared `/var`, with the staged owner, mode and times.
-    Existing files and directories are never touched. **Rule:** `/var` is
-    state; package files there are seeded once and never updated.
+    account check): creates only the package-owned `/var` paths (from
+    `pacman -Qlq`, query checked separately) that do not exist yet, with the
+    staged owner, mode and times. Existing files and directories are never
+    touched. **Rule:** `/var` is state; package files there are seeded once and
+    never updated.
   - Ordering matters: `systemd-sysusers` runs before `local-fs.target`, so one
     unit ordered after `local-fs.target` and before `sysusers` is a cycle (a lab
     boot hung on it); hence two units.

@@ -16,6 +16,7 @@ usr/lib/renner-os/essential.units
 usr/lib/renner-os/initrd-etc-overlay
 usr/lib/renner-os/renner-exe-binfmt
 usr/lib/renner-os/trim-themes
+usr/lib/renner-os/userdb-generate
 usr/lib/sysctl.d/80-renner-performance.conf
 usr/lib/systemd/system/renner-activate-accounts.service
 usr/lib/systemd/system/renner-activate-var.service

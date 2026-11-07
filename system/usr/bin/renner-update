@@ -7,8 +7,9 @@
 #   3. rebuilds its unified kernel image (UKI) and marks it read-only,
 #   4. adds it to the boot menu with boot counting (3 tries), so a version
 #      that never boots cleanly falls back to the previous one by itself.
-# Accounts and /var files that packages add are applied by
-# renner-activate.service on the first boot of the new deployment.
+# System accounts travel with each deployment as systemd userdb records
+# (userdb-generate); package files under /var are seeded into the shared /var
+# on the deployment's first boot (renner-activate-var.service).
 #
 #   renner-update                  full system upgrade (pacman -Syu)
 #   renner-update install PKG...   add packages
@@ -141,19 +142,22 @@ mirror_live_etc() {  # exact copy of the effective /etc paths, including absence
     done
 }
 
-write_manifest() {  # write_manifest BEFORE_DIR: what renner-activate applies at boot
-    local before=$1 m=$dst/$MANIFEST
+seal_accounts_and_var() {  # what this deployment carries for boot (see activate)
+    # System accounts become userdb records inside the deployment, so they are
+    # versioned with it (nss-systemd reads them after /etc/passwd).
+    /usr/lib/renner-os/userdb-generate "$dst"
+
+    # Package-owned paths under /var, from pacman's own file lists, seeded once
+    # into the shared /var on first boot. The shared package cache, logs and the
+    # pacman database link are not payload. The query is checked on its own: a
+    # failed or partial listing must fail the transaction, not seal a short list.
+    local m=$dst/$MANIFEST files
     rm -rf "$m"; mkdir -p "$m"
-    # Groups and users this transaction added (by name), with staged IDs.
-    awk -F: 'NR == FNR { seen[$1] = 1; next } !($1 in seen)' \
-        "$before/group" "$dst/etc/group" >"$m/accounts.group"
-    awk -F: 'NR == FNR { seen[$1] = 1; next } !($1 in seen)' \
-        "$before/passwd" "$dst/etc/passwd" >"$m/accounts.passwd"
-    # Package-owned paths under /var, from pacman's own file lists. The shared
-    # package cache, logs and the pacman database link are not payload.
-    arch-chroot "$ROOT" pacman -Qlq | sed 's#/$##' | grep '^/var/' \
-        | grep -v -E '^/var/(cache/pacman|log|lib/pacman)(/|$)' | sort -u >"$m/var.paths" || true
-    say "Manifest: $(wc -l <"$m/accounts.group") group(s), $(wc -l <"$m/accounts.passwd") user(s), $(wc -l <"$m/var.paths") /var path(s)"
+    files=$(arch-chroot "$ROOT" pacman -Qlq) || die "could not list the installed package files"
+    printf '%s\n' "$files" \
+        | awk '{ sub("/$", "") } /^\/var\// && !/^\/var\/(cache\/pacman|log|lib\/pacman)(\/|$)/' \
+        | sort -u >"$m/var.paths"
+    say "Sealed: $(wc -l <"$dst/usr/lib/renner-os/userdb.list") system account record(s), $(wc -l <"$m/var.paths") /var path(s)"
 }
 
 transaction() {
@@ -188,16 +192,10 @@ transaction() {
     mount --bind /var/cache/pacman/pkg "$ROOT/var/cache/pacman/pkg"
     mount --bind /var/log "$ROOT/var/log"
 
-    # Account databases as mirrored from the live system, to find out below
-    # exactly which groups and users this transaction adds.
-    local before=$WORK/accounts-before
-    rm -rf "$before"; mkdir -p "$before"
-    cp "$dst/etc/group" "$dst/etc/passwd" "$before/"
-
     arch-chroot "$ROOT" pacman "$@"
     say "Building the kernel image"
     arch-chroot "$ROOT" mkinitcpio -P
-    write_manifest "$before"
+    seal_accounts_and_var
     unmount_chroot || die "could not unmount $ROOT"
     [[ -s $dst/boot/renner.efi ]] || die "no kernel image was built"
 

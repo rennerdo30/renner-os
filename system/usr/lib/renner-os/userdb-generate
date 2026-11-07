@@ -1,0 +1,86 @@
+#!/usr/bin/env bash
+# renner.dev OS: turn a deployment's system accounts into systemd userdb records.
+#
+#   userdb-generate ROOT
+#
+# Reads ROOT/etc/passwd and ROOT/etc/group (the deployment's own files, as
+# packages left them) and writes JSON records for every system user and group
+# (ID 1-999) into ROOT/usr/lib/userdb, which nss-systemd reads after
+# /etc/passwd ("passwd: files systemd"). The records live in the read-only
+# deployment, so they are versioned with it: a rollback restores the matching
+# accounts, and nothing has to be replayed into /etc at boot.
+#
+# - Local users (ID 1000+) are never written: they live only in /etc (overlay),
+#   so deleting or renaming one is permanent.
+# - Membership records only for members that are system users, so removing a
+#   local user from a group (for example wheel) stays removed.
+# - Only files listed in ROOT/usr/lib/renner-os/userdb.list are ever replaced or
+#   removed; a record a package ships itself is left alone.
+# - ROOT/usr/lib/renner-os/userdb.list lists what was generated
+#   ("user NAME UID GID" / "group NAME GID") for the boot-time check.
+set -Eeuo pipefail
+
+root=${1:?usage: userdb-generate ROOT}
+dir=$root/usr/lib/userdb
+list=$root/usr/lib/renner-os/userdb.list
+mkdir -p "$dir" "$(dirname "$list")"
+
+# Remove what the previous generation wrote (and only that).
+if [[ -f $list.files ]]; then
+    while IFS= read -r f; do
+        [[ -n $f && $f != */* ]] && rm -f "$dir/$f"
+    done <"$list.files"
+fi
+: >"$list"
+: >"$list.files"
+
+json_escape() {  # JSON string body: backslash and double quote escaped
+    local s=${1//\\/\\\\}
+    printf '%s' "${s//\"/\\\"}"
+}
+
+write_record() {  # write_record FILE CONTENT: never overwrite a foreign file
+    local file=$1 content=$2
+    if [[ -e $dir/$file || -L $dir/$file ]]; then
+        echo "userdb-generate: $dir/$file exists and is not ours; skipped" >&2
+        return 1
+    fi
+    printf '%s\n' "$content" >"$dir/$file"
+    echo "$file" >>"$list.files"
+}
+
+link_record() {  # link_record LINK TARGET
+    local link=$1 target=$2
+    if [[ -e $dir/$link || -L $dir/$link ]]; then
+        echo "userdb-generate: $dir/$link exists and is not ours; skipped" >&2
+        return 1
+    fi
+    ln -s "$target" "$dir/$link"
+    echo "$link" >>"$list.files"
+}
+
+declare -A system_user=()
+
+while IFS=: read -r name _ uid gid gecos home shell; do
+    [[ -n $name && $uid =~ ^[0-9]+$ ]] || continue
+    ((uid >= 1 && uid <= 999)) || continue
+    system_user[$name]=1
+    write_record "$name.user" "{\"userName\":\"$(json_escape "$name")\",\"uid\":$uid,\"gid\":$gid,\"realName\":\"$(json_escape "$gecos")\",\"homeDirectory\":\"$(json_escape "$home")\",\"shell\":\"$(json_escape "$shell")\",\"disposition\":\"system\"}" || continue
+    link_record "$uid.user" "$name.user" || true
+    echo "user $name $uid $gid" >>"$list"
+done <"$root/etc/passwd"
+
+while IFS=: read -r name _ gid members; do
+    [[ -n $name && $gid =~ ^[0-9]+$ ]] || continue
+    ((gid >= 1 && gid <= 999)) || continue
+    write_record "$name.group" "{\"groupName\":\"$(json_escape "$name")\",\"gid\":$gid,\"disposition\":\"system\"}" || continue
+    link_record "$gid.group" "$name.group" || true
+    echo "group $name $gid" >>"$list"
+    IFS=, read -r -a member_list <<<"$members"
+    for m in "${member_list[@]}"; do
+        [[ -n $m && -n ${system_user[$m]:-} ]] || continue
+        write_record "$m:$name.membership" "{}" || true
+    done
+done <"$root/etc/group"
+
+echo "userdb-generate: $(grep -c '^user ' "$list" || true) system user(s), $(grep -c '^group ' "$list" || true) group(s)"
