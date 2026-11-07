@@ -20,7 +20,10 @@ for i in $(seq 1 60); do
     sleep 2
 done
 sleep 5
-for attempt in 1 2 3; do
+# Three failed tries lock the account for 10 minutes (pam_faillock); a lab
+# login must never be what locks it.
+L exec $VM -- faillock --user "$USER_NAME" --reset >/dev/null 2>&1
+for attempt in 1 2; do
     L type $VM "$PASSWORD" --enter
     for i in $(seq 1 30); do
         session && { echo "logged in as $USER_NAME (attempt $attempt)"; exit 0; }
