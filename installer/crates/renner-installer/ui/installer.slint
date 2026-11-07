@@ -512,6 +512,10 @@ export component InstallerWindow inherits Window {
                     Rectangle {
                         width: 280px;
                         background: Brand.surface;
+                        // Own rounded corners: the software renderer clips to
+                        // the card's rectangle, not to its rounded shape.
+                        border-top-left-radius: 21px;
+                        border-bottom-left-radius: 21px;
                         Rectangle { x: parent.width - 1px; width: 1px; background: Brand.line; }
                         VerticalLayout {
                             padding: 32px;
