@@ -43,4 +43,6 @@ check "default for .exe"        "renner-exe"     "${AS[@]}" xdg-mime query defau
 check "Plasma style"            "renner"         sh -c 'cat /etc/xdg/plasmarc'
 check "global theme"            "dev.renner"     sh -c 'grep LookAndFeelPackage /etc/xdg/kdeglobals'
 check "settings pages hidden"   "kcm_kwin_effects=false" sh -c 'grep kcm_kwin_effects /etc/xdg/kdeglobals'
+check "widget style Darkly"     "widgetStyle=Darkly" sh -c 'grep widgetStyle /etc/xdg/kdeglobals'
+check "window frames Darkly"    "org.kde.darkly" sh -c 'grep ^library /etc/xdg/kwinrc'
 exit $failed

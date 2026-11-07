@@ -259,6 +259,7 @@ EOF
     fi
     ((GPU_MULTI)) && units+=(switcheroo-control.service)
     arch-chroot "$TARGET" systemctl enable "${units[@]}" >/dev/null
+    install_local_packages
     install_proton
     install_apps
 }
@@ -307,6 +308,24 @@ install_apps() {
     curl -fsSL --retry 2 -o "$TARGET/usr/share/renner-os/launcher/RennerLauncher.AppImage" "$LAUNCHER_URL" \
         || die "renner.dev Launcher download failed"
     chmod 755 "$TARGET/usr/share/renner-os/launcher/RennerLauncher.AppImage"
+}
+
+# Packages renner.dev OS builds itself (e.g. the Darkly widget style) until its
+# own repository exists (RO-14): from the install medium's renner/repo.
+LOCAL_REPO=${RENNER_LOCAL_REPO:-/run/archiso/bootmnt/renner/repo}
+install_local_packages() {
+    local pkgs=()
+    [[ -d $LOCAL_REPO ]] && mapfile -t pkgs < <(find "$LOCAL_REPO" -maxdepth 1 -name '*.pkg.tar.*' ! -name '*-debug-*' ! -name '*.sig')
+    if ((${#pkgs[@]} == 0)); then
+        echo "    no renner.dev packages on this medium; the look falls back to Breeze"
+        return 0
+    fi
+    say "Adding renner.dev packages"
+    install -d "$TARGET/var/tmp/renner-pkgs"
+    cp "${pkgs[@]}" "$TARGET/var/tmp/renner-pkgs/"
+    arch-chroot "$TARGET" sh -c 'pacman -U --noconfirm --needed /var/tmp/renner-pkgs/*' \
+        || die "could not install the renner.dev packages"
+    rm -rf "$TARGET/var/tmp/renner-pkgs"
 }
 
 # Proton for Windows programs, part of the system image: GE-Proton's latest
@@ -405,6 +424,14 @@ EOF
         arch-chroot "$TARGET" pacman -S --noconfirm --needed qemu-guest-agent >/dev/null \
             || die "could not install the QEMU guest agent"
         arch-chroot "$TARGET" systemctl enable qemu-guest-agent.service >/dev/null 2>&1 || true
+    fi
+    # The Darkly look when Darkly is installed (else Breeze stays): widget style
+    # and window frames; its own settings app is hidden from the menu.
+    if [[ -e $TARGET/usr/lib/qt6/plugins/styles/darkly6.so ]]; then
+        sed -i 's/^widgetStyle=Breeze$/widgetStyle=Darkly/' "$TARGET/etc/xdg/kdeglobals"
+        sed -i 's/^library=org.kde.breeze$/library=org.kde.darkly/; s/^theme=Breeze$/theme=Darkly/' "$TARGET/etc/xdg/kwinrc"
+        rm -f "$TARGET/usr/share/applications/darklystyleconfig.desktop" \
+              "$TARGET/usr/share/applications/kcm_darklydecoration.desktop"
     fi
     # Finishes Flatpak apps the installer could not (it does nothing otherwise).
     if ((DESKTOP)); then arch-chroot "$TARGET" systemctl enable renner-apps.service >/dev/null; fi

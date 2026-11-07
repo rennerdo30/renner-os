@@ -1,5 +1,6 @@
 etc/scx_loader.toml
 etc/xdg/breezerc
+etc/xdg/darklyrc
 etc/xdg/kdeglobals
 etc/xdg/kscreenlockerrc
 etc/xdg/ksplashrc

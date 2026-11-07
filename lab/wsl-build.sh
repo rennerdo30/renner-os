@@ -42,7 +42,7 @@ for step in "${steps[@]}"; do
             pacman -Sy >/dev/null   # the package lists patch-iso.sh resolves against
             echo "==> patching $(basename "$iso")"
             bash "$REPO/iso/patch-iso.sh" --iso "$iso" --installer "$ART/renner-installer" \
-                --out "$HOME/renner-os-lab.iso" --mirror http://10.0.2.2:8079 --serial-console --test
+                --out "$HOME/renner-os-lab.iso" --mirror http://10.0.2.2:8079 --serial-console --test --repo "$LAB/repo"
             install -m 644 "$HOME/renner-os-lab.iso" "$ART/renner-os-lab.iso"
             echo "    $ART/renner-os-lab.iso"
             ;;

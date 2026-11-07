@@ -23,7 +23,7 @@
 set -Eeuo pipefail
 
 REPO=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
-ISO= OUT= INSTALLER= SHA= MIRROR= SOURCE= SERIAL=0 TEST=0 TIMEOUT=3
+ISO= OUT= INSTALLER= SHA= MIRROR= SOURCE= SERIAL=0 TEST=0 TIMEOUT=3 REPO_DIR=
 
 say() { printf '\033[1m==> %s\033[0m\n' "$*"; }
 die() { printf '\033[31mpatch-iso: %s\033[0m\n' "$*" >&2; exit 1; }
@@ -38,6 +38,7 @@ while (($#)); do
         --source) SOURCE=$2; shift ;;
         --serial-console) SERIAL=1 ;;
         --test) TEST=1 ;;
+        --repo) REPO_DIR=$2; shift ;;
         --timeout) TIMEOUT=$2; shift ;;
         -h|--help) sed -n '2,19p' "$0"; exit 0 ;;
         *) die "unknown option: $1" ;;
@@ -108,6 +109,13 @@ while read -r pkg url; do
     curl -fsSL --retry 2 -o "$P/pkgs/${url##*/}" "$url" || die "download failed: $url"
 done <"$WORK/pkgs.txt"
 echo "    $(ls "$P/pkgs" | wc -l) packages, $(du -sh "$P/pkgs" | cut -f1)"
+
+# Packages renner.dev OS builds itself (packages/build-aur.sh), for the installer.
+if [[ -n $REPO_DIR ]]; then
+    mkdir -p "$P/repo"
+    find "$REPO_DIR" -maxdepth 1 -name '*.pkg.tar.*' ! -name '*-debug-*' -exec cp {} "$P/repo/" \;
+    echo "    renner.dev packages: $(ls "$P/repo" | tr '\n' ' ')"
+fi
 
 options="$basedir $uuid copytoram=n script=/run/archiso/bootmnt/renner/autostart.sh"
 [[ -n $MIRROR ]] && options+=" renner.mirror=$MIRROR"

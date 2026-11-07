@@ -1,0 +1,27 @@
+# renner.dev OS: the Darkly widget style and window frames (RO-4), set to the
+# renner.dev look. Colors come from the RennerDark color scheme.
+[Common]
+CornerRadius=10
+ShadowSize=ShadowLarge
+ShadowStrength=170
+OutlineCloseButton=false
+FancyMargins=true
+
+[Style]
+AnimationsDuration=180
+MenuOpacity=100
+ToolBarOpacity=100
+MenuBarOpacity=100
+TabBarOpacity=100
+TabDrawHighlight=true
+TabUseHighlightColor=true
+NewDolphinSelectionStyle=true
+DisableDolphinUrlNavigatorBackground=true
+ViewDrawTreeBranchLines=false
+SidePanelDrawFrame=false
+MenuItemDrawStrongFocus=true
+WindowDragMode=WD_MINIMAL
+
+[Windeco]
+TitleAlignment=AlignLeft
+DrawBorderOnMaximizedWindows=false
