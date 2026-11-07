@@ -23,7 +23,7 @@ tar -C system -cf "$ART/theme.tar" \
     usr/share/plasma usr/share/color-schemes usr/share/icons usr/share/wallpapers \
     etc/xdg/kdeglobals etc/xdg/kwinrc etc/xdg/breezerc etc/xdg/darklyrc etc/xdg/plasmarc \
     etc/xdg/ksplashrc etc/xdg/kscreenlockerrc
-python lab/lab.py cache status >/dev/null 2>&1 || python lab/lab.py cache up --minutes 120 >/dev/null
+python lab/lab.py cache status | grep -q "running pid" || python lab/lab.py cache up --minutes 120 >/dev/null
 
 uid=$(X id -u "$USER_NAME")
 AS=(runuser -u "$USER_NAME" -- env "XDG_RUNTIME_DIR=/run/user/$uid" "DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/$uid/bus")
@@ -39,7 +39,7 @@ T=120 X sh -c 'set -e
 X "${AS[@]}" sh -c '
     rm -f ~/.config/kdeglobals ~/.config/kwinrc ~/.config/plasmarc ~/.config/darklyrc ~/.config/breezerc
     kbuildsycoca6 >/dev/null 2>&1
-    qdbus6 org.kde.KWin /KWin reconfigure >/dev/null 2>&1 || true
+    dbus-send --session --dest=org.kde.KWin /KWin org.kde.KWin.reconfigure >/dev/null 2>&1 || true
     plasma-apply-colorscheme RennerDark >/dev/null 2>&1 || true
     plasma-apply-desktoptheme renner >/dev/null 2>&1 || true
     systemctl --user restart plasma-plasmashell.service'
