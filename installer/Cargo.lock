@@ -3467,6 +3467,7 @@ dependencies = [
  "anyhow",
  "clap",
  "installer-core",
+ "libc",
  "slint",
  "slint-build",
 ]

@@ -12,6 +12,8 @@ use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
 #[cfg(feature = "gui")]
+mod console;
+#[cfg(feature = "gui")]
 mod gui;
 
 #[derive(Parser)]

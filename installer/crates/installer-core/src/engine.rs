@@ -97,9 +97,13 @@ pub fn run(plan: &Plan, mut on_event: impl FnMut(Event)) -> Result<()> {
     let script = dir.join("install.sh");
     std::fs::write(&script, INSTALL_SH).context("could not write install.sh")?;
 
-    let mut child = Command::new("bash")
-        .arg(&script)
-        .args(script_args(plan))
+    let mut command = Command::new("bash");
+    command.arg(&script).args(script_args(plan));
+    // Own process group: signals for the terminal's foreground group (Ctrl+C,
+    // Ctrl+\) never reach a running install (RO-30).
+    #[cfg(unix)]
+    std::os::unix::process::CommandExt::process_group(&mut command, 0);
+    let mut child = command
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::inherit()) // install.sh sends stderr into its own log pipeline

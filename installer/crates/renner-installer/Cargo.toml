@@ -20,5 +20,8 @@ anyhow.workspace = true
 clap.workspace = true
 slint = { workspace = true, optional = true, features = ["std", "compat-1-2", "renderer-software"] }
 
+[target.'cfg(target_os = "linux")'.dependencies]
+libc.workspace = true
+
 [build-dependencies]
 slint-build = { workspace = true, optional = true }

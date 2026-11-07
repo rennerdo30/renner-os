@@ -69,6 +69,10 @@ fn set_scale_factor() {
 
 pub fn run() -> Result<()> {
     set_scale_factor();
+    // The console underneath must not see our keystrokes (RO-30); restored
+    // when this guard drops at the end of run().
+    crate::console::ignore_terminal_signals();
+    let _console = crate::console::ConsoleGuard::engage();
     let inventory = Inventory::detect()?;
     let ui = InstallerWindow::new().map_err(|e| anyhow!("could not open the installer window: {e}"))?;
 

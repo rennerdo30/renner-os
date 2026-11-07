@@ -439,7 +439,8 @@ export component InstallerWindow inherits Window {
         if (page == 0) { next-button.take-focus(); }
         else if (page == 1) { disk-keys.focus(); }
         else if (page == 2) { user-field.take-focus(); }
-        else if (page == 3 || page == 5) { next-button.take-focus(); }
+        else if (page == 3) { install-button.take-focus(); }
+        else if (page == 5) { restart-button.take-focus(); }
         else { keys.focus(); }
     }
     changed page => { focus-page(); }
@@ -788,10 +789,28 @@ export component InstallerWindow inherits Window {
                                 width: root.page >= 1 && root.page <= 3 ? self.min-width : 0;
                                 clicked => { root.go-back(); }
                             }
+                            // One button per kind of step (RO-29): when a click
+                            // changes the page, the next page's button is a
+                            // different element, so no stale pressed or hover
+                            // state from the click that just happened can
+                            // swallow the next one.
                             next-button := PrimaryButton {
-                                text: root.page == 3 ? "Erase disk and install" : root.page == 5 ? "Restart now" : "Next";
+                                text: "Next";
+                                visible: root.page <= 2;
+                                width: root.page <= 2 ? self.min-width : 0;
                                 enabled: root.page != 1 || root.disk-index >= 0;
-                                width: root.page == 3 ? 240px : self.min-width;
+                                clicked => { root.go-next(); }
+                            }
+                            install-button := PrimaryButton {
+                                text: "Erase disk and install";
+                                visible: root.page == 3;
+                                width: root.page == 3 ? 240px : 0;
+                                clicked => { root.go-next(); }
+                            }
+                            restart-button := PrimaryButton {
+                                text: "Restart now";
+                                visible: root.page == 5;
+                                width: root.page == 5 ? self.min-width : 0;
                                 clicked => { root.go-next(); }
                             }
                         }

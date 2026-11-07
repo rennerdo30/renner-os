@@ -52,4 +52,9 @@ while (($#)); do
 done
 
 say "Starting renner-installer"
-exec "$BIN" "${args[@]}" </dev/tty
+"$BIN" "${args[@]}" </dev/tty
+rc=$?
+# The graphical installer switches the console keyboard off while it runs
+# and restores it on exit; make sure it is back even after a crash.
+kbd_mode -u -C /dev/tty 2>/dev/null || true
+exit "$rc"
