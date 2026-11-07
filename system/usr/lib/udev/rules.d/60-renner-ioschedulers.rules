@@ -1,0 +1,7 @@
+# renner.dev OS: I/O scheduler per kind of drive (RO-5).
+# NVMe: none (the drive schedules itself).
+ACTION=="add|change", KERNEL=="nvme[0-9]*n[0-9]*", ATTR{queue/scheduler}="none"
+# SATA/USB SSD and eMMC: mq-deadline.
+ACTION=="add|change", KERNEL=="sd[a-z]*|mmcblk[0-9]*", ATTR{queue/rotational}=="0", ATTR{queue/scheduler}="mq-deadline"
+# Hard disks: bfq (keeps the desktop responsive during big copies).
+ACTION=="add|change", KERNEL=="sd[a-z]*", ATTR{queue/rotational}=="1", ATTR{queue/scheduler}="bfq"

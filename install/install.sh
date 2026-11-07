@@ -64,6 +64,9 @@ DESKTOP_PACKAGES=(
     lib32-libxcomposite lib32-libxinerama lib32-freetype2 lib32-fontconfig lib32-gnutls
     lib32-libpulse lib32-alsa-lib lib32-alsa-plugins
     xdg-user-dirs libnotify
+    # Performance (RO-5): sched_ext scheduler and its loader, swap in RAM,
+    # GameMode for games (64 and 32 bit), power profiles for Plasma.
+    scx-scheds scx-tools zram-generator gamemode lib32-gamemode power-profiles-daemon
 )
 # GPU driver packages come from renner-gpu-detect (see install_desktop).
 GPU_PACKAGES=() NVIDIA_DRIVER=none GPU_MULTI=0
@@ -250,7 +253,7 @@ CompositorCommand=kwin_wayland --drm --no-lockscreen --no-global-shortcuts --loc
 [Theme]
 Current=breeze
 EOF
-    local units=(sddm.service bluetooth.service)
+    local units=(sddm.service bluetooth.service scx_loader.service power-profiles-daemon.service)
     if [[ $NVIDIA_DRIVER == open ]]; then
         units+=(nvidia-suspend.service nvidia-hibernate.service nvidia-resume.service)
     fi
@@ -394,7 +397,7 @@ EOF
     # package files in /var that a new deployment brings (see activate).
     arch-chroot "$TARGET" systemctl enable NetworkManager.service systemd-timesyncd.service \
         systemd-boot-update.service renner-activate-accounts.service renner-activate-var.service \
-        renner-boot-health.service >/dev/null
+        renner-boot-health.service systemd-oomd.service fstrim.timer >/dev/null
     # In a virtual machine: the QEMU guest agent, so the host can shut it down
     # cleanly and tools can talk to it (it only starts when QEMU offers it).
     if [[ $(cat /sys/class/dmi/id/sys_vendor 2>/dev/null) == QEMU \
@@ -412,7 +415,8 @@ setup_boot() {
     local console=""
     ((SERIAL)) && console=" console=tty0 console=ttyS0,115200"
     install -d "$TARGET/etc/kernel"
-    echo "root=UUID=$ROOT_UUID rootfstype=btrfs rootflags=subvol=/@deployments/$DEPLOYMENT,compress=zstd:1,noatime ro$console" \
+    # quiet boot; split_lock_detect=off: no slowdown for games that split locks (RO-5).
+    echo "root=UUID=$ROOT_UUID rootfstype=btrfs rootflags=subvol=/@deployments/$DEPLOYMENT,compress=zstd:1,noatime ro quiet loglevel=3 nowatchdog split_lock_detect=off$console" \
         >"$TARGET/etc/kernel/cmdline"
 
     # With the NVIDIA driver, leave out `kms` so nouveau never loads early.

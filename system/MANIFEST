@@ -1,3 +1,4 @@
+etc/scx_loader.toml
 etc/xdg/breezerc
 etc/xdg/kdeglobals
 etc/xdg/kscreenlockerrc
@@ -19,11 +20,14 @@ usr/lib/renner-os/boot-health
 usr/lib/renner-os/essential.units
 usr/lib/renner-os/initrd-etc-overlay
 usr/lib/renner-os/renner-exe-binfmt
+usr/lib/sysctl.d/80-renner-performance.conf
 usr/lib/systemd/system/renner-activate-accounts.service
 usr/lib/systemd/system/renner-activate-var.service
 usr/lib/systemd/system/renner-apps.service
 usr/lib/systemd/system/renner-boot-health.service
 usr/lib/systemd/system/renner-etc-overlay.service
+usr/lib/systemd/zram-generator.conf
+usr/lib/udev/rules.d/60-renner-ioschedulers.rules
 usr/lib/udev/rules.d/70-renner-ntsync.rules
 usr/share/applications/kwil.desktop
 usr/share/applications/renner-exe.desktop
