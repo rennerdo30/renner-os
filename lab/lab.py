@@ -82,6 +82,86 @@ def pid_image(pid: int) -> str:
     return out.split(",")[0].strip('"').lower() if out.startswith('"') else ""
 
 
+# --- window placement (owner, 2026-11-08: "open the qemu windows on the second screen") ---
+
+
+def _windows_of(pid: int) -> list[int]:
+    """Visible top-level windows of a process."""
+    from ctypes import wintypes
+    user32 = ctypes.windll.user32
+    found: list[int] = []
+    proc = ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HWND, wintypes.LPARAM)
+
+    def callback(hwnd, _):
+        owner = wintypes.DWORD()
+        user32.GetWindowThreadProcessId(hwnd, ctypes.byref(owner))
+        if owner.value == pid and user32.IsWindowVisible(hwnd):
+            found.append(hwnd)
+        return True
+
+    user32.EnumWindows(proc(callback), 0)
+    return found
+
+
+def _secondary_monitor():
+    """Work area (left, top, right, bottom) of the first non-primary monitor, or None."""
+    from ctypes import wintypes
+    user32 = ctypes.windll.user32
+
+    class MONITORINFO(ctypes.Structure):
+        _fields_ = [("cbSize", wintypes.DWORD), ("rcMonitor", wintypes.RECT),
+                    ("rcWork", wintypes.RECT), ("dwFlags", wintypes.DWORD)]
+
+    areas = []
+    proc = ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HMONITOR, wintypes.HDC,
+                              ctypes.POINTER(wintypes.RECT), wintypes.LPARAM)
+
+    def callback(hmon, _hdc, _rect, _):
+        info = MONITORINFO()
+        info.cbSize = ctypes.sizeof(MONITORINFO)
+        user32.GetMonitorInfoW(hmon, ctypes.byref(info))
+        if not info.dwFlags & 1:  # MONITORINFOF_PRIMARY
+            r = info.rcWork
+            areas.append((r.left, r.top, r.right, r.bottom))
+        return True
+
+    user32.EnumDisplayMonitors(0, 0, proc(callback), 0)
+    return areas[0] if areas else None
+
+
+def place_window(pid: int, wait: float = 15.0) -> str:
+    """Moves a VM window to the second screen (keeps its size), centred."""
+    user32 = ctypes.windll.user32
+    from ctypes import wintypes
+    area = _secondary_monitor()
+    if not area:
+        return "only one screen; window left where it is"
+    end = time.time() + wait
+    while time.time() < end:
+        wins = _windows_of(pid)
+        if wins:
+            hwnd = wins[0]
+            rect = wintypes.RECT()
+            user32.GetWindowRect(hwnd, ctypes.byref(rect))
+            w, h = rect.right - rect.left, rect.bottom - rect.top
+            left, top, right, bottom = area
+            x = left + max(0, (right - left - w) // 2)
+            y = top + max(0, (bottom - top - h) // 2)
+            # ASYNCWINDOWPOS: never wait for a busy QEMU window to answer.
+            SWP_NOSIZE, SWP_NOZORDER, SWP_ASYNCWINDOWPOS = 0x0001, 0x0004, 0x4000
+            user32.SetWindowPos(hwnd, 0, x, y, 0, 0, SWP_NOSIZE | SWP_NOZORDER | SWP_ASYNCWINDOWPOS)
+            return f"window on the second screen at {x},{y}"
+        time.sleep(0.5)
+    return "no window found"
+
+
+def cmd_place(a) -> None:
+    state = load_state(a.name)
+    if not running(state):
+        sys.exit(f"lab: VM '{a.name}' is not running")
+    print(f"{a.name}: {place_window(state['pid'])}")
+
+
 def spawn_detached(args: list[str], log: Path) -> int:
     flags = 0
     if os.name == "nt":
@@ -261,6 +341,8 @@ def cmd_up(a) -> None:
     log = d / "qemu.log"
     log.write_text(" ".join(args) + "\n")
     pid = spawn_detached(args, log)
+    if a.window:
+        place_window(pid)
     deadline = time.time() + a.minutes * 60
     state.update(pid=pid, deadline=deadline, started=time.time())
     save_state(a.name, state)
@@ -691,6 +773,7 @@ def main() -> None:
     s.add_argument("name"); s.add_argument("argv", nargs=argparse.REMAINDER)
     s.add_argument("--timeout", type=float, default=60); s.add_argument("--wait-agent", type=float, default=0)
     s.set_defaults(f=cmd_exec)
+    s = sub.add_parser("place", help="move a VM window to the second screen"); s.add_argument("name"); s.set_defaults(f=cmd_place)
     s = sub.add_parser("ui", help="drive the installer over its control channel (renner.test=1)")
     s.add_argument("name"); s.add_argument("command", nargs="*")
     s.add_argument("--wait-page", type=int); s.add_argument("--fail-page", type=int)
