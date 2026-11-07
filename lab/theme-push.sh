@@ -30,9 +30,10 @@ AS=(runuser -u "$USER_NAME" -- env "XDG_RUNTIME_DIR=/run/user/$uid" "DBUS_SESSIO
 T=120 X sh -c 'set -e
     curl -fsS -o /tmp/theme.tar http://10.0.2.2:8079/artifacts/theme.tar
     btrfs property set -ts / ro false
+    mount -o remount,rw /
+    trap "mount -o remount,ro /; btrfs property set -ts / ro true" EXIT
     tar -xf /tmp/theme.tar -C / --no-same-owner
     /usr/lib/renner-os/trim-themes
-    btrfs property set -ts / ro true
     rm -f /tmp/theme.tar'
 # Reload what Plasma and KWin read; the user's own settings are reset to the
 # system defaults so the pushed defaults show.
