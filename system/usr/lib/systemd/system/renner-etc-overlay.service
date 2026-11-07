@@ -1,0 +1,13 @@
+[Unit]
+Description=renner.dev OS writable /etc overlay
+Documentation=https://github.com/rennerdo30/renner-os
+DefaultDependencies=no
+ConditionPathExists=/etc/initrd-release
+Requires=sysroot.mount
+After=sysroot.mount
+Before=initrd-root-fs.target initrd-parse-etc.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/lib/renner-os/initrd-etc-overlay

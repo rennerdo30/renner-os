@@ -17,6 +17,8 @@ jobs:
       - name: Compile check
         run: python3 -m py_compile packages/renner-gpu/renner-gpu-detect lab/lab.py lab/pkgcache.py
       - name: Shell syntax
-        run: bash -n packages/renner-exe/renner-exe
+        run: |
+          for f in packages/renner-exe/renner-exe install/install.sh system/usr/bin/renner-update                    system/usr/lib/initcpio/install/renner-etc-overlay; do bash -n "$f"; done
+          sh -n system/usr/lib/renner-os/initrd-etc-overlay
       - name: Unit tests
         run: python3 -m unittest discover -s tests -v

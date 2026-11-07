@@ -1,0 +1,134 @@
+#!/usr/bin/env bash
+# renner-update: transactional updates for renner.dev OS.
+#
+# The running system never changes. Each transaction:
+#   1. snapshots the booted deployment (@deployments/<id>) into a new one,
+#   2. runs pacman inside the new deployment (chroot),
+#   3. rebuilds its unified kernel image (UKI) and marks it read-only,
+#   4. adds it to the boot menu with boot counting (3 tries), so a version
+#      that never boots cleanly falls back to the previous one by itself.
+#
+#   renner-update                  full system upgrade (pacman -Syu)
+#   renner-update install PKG...   add packages
+#   renner-update remove PKG...    remove packages
+#   renner-update status           list deployments and boot entries
+set -Eeuo pipefail
+
+readonly KEEP=3            # deployments kept besides the booted one
+readonly TRIES=3           # boot attempts before systemd-boot falls back
+readonly ESP=/efi
+readonly WORK=/run/renner-update
+readonly TOP=$WORK/top
+readonly ROOT=$WORK/root  # bind mount of the new deployment for the chroot
+
+die() { echo "renner-update: $*" >&2; exit 1; }
+say() { echo "==> $*"; }
+
+cmdline=$(</proc/cmdline)
+booted=$(grep -o 'subvol=/\?@deployments/[0-9]*' <<<"$cmdline" | grep -o '[0-9]*$' || true)
+uuid=$(grep -o 'root=UUID=[^ ]*' <<<"$cmdline" | cut -d= -f3 || true)
+
+deployments() {  # oldest first
+    find "$TOP/@deployments" -mindepth 1 -maxdepth 1 -printf '%f\n' | grep -E '^[0-9]+$' | sort -n
+}
+
+mount_top() {
+    mkdir -p "$TOP"
+    mountpoint -q "$TOP" || mount -t btrfs -o subvolid=5,noatime "/dev/disk/by-uuid/$uuid" "$TOP"
+}
+
+status() {
+    mount_top
+    say "Deployments (newest last):"
+    while read -r id; do
+        local mark="" ro
+        ro=$(btrfs property get -ts "$TOP/@deployments/$id" ro | cut -d= -f2)
+        [[ $id == "$booted" ]] && mark=" (booted)"
+        [[ $ro == true ]] || mark+=" (unfinished)"
+        echo "    $id$mark"
+    done < <(deployments)
+    say "Boot entries:"
+    find "$ESP/EFI/Linux" -maxdepth 1 -name 'renner-*.efi' -printf '    %f\n' | sort
+}
+
+delete_deployment() {
+    local id=$1
+    [[ $id != "$booted" ]] || return 0
+    btrfs subvolume delete "$TOP/@deployments/$id" >/dev/null
+    find "$ESP/EFI/Linux" -maxdepth 1 -name "renner-$id*.efi" -delete
+}
+
+prune() {
+    local -a ids
+    mapfile -t ids < <(deployments)
+    local n=${#ids[@]} i
+    for ((i = 0; i < n - KEEP; i++)); do
+        [[ ${ids[i]} == "$booted" ]] && continue
+        say "Removing old deployment ${ids[i]}"
+        delete_deployment "${ids[i]}"
+    done
+}
+
+new="" dst="" finished=0
+
+cleanup() {  # EXIT trap while a transaction runs: never leave a half deployment
+    [[ -n $dst ]] || return 0
+    umount -q "$ROOT/var" "$ROOT" 2>/dev/null || true
+    if [[ $finished != 1 && -d $dst ]]; then
+        echo "renner-update: transaction failed; removing deployment $new" >&2
+        btrfs subvolume delete "$dst" >/dev/null || true
+        rm -f "$ESP/EFI/Linux/renner-$new"*.efi
+    fi
+}
+
+transaction() {
+    new=$(date +%Y%m%d%H%M%S)
+    dst=$TOP/@deployments/$new
+    [[ ! -e $dst ]] || die "deployment $new already exists; try again in a second"
+
+    say "New deployment $new from $booted"
+    btrfs subvolume snapshot "$TOP/@deployments/$booted" "$dst" >/dev/null
+    trap cleanup EXIT
+
+    # pacman reads the deployment's own /etc (no overlay in the chroot), so
+    # carry over the live repository and mirror configuration.
+    cp /etc/pacman.conf "$dst/etc/pacman.conf"
+    cp -a /etc/pacman.d/. "$dst/etc/pacman.d/"
+    sed -i "s|subvol=/@deployments/$booted|subvol=/@deployments/$new|" "$dst/etc/kernel/cmdline"
+    grep -q "subvol=/@deployments/$new" "$dst/etc/kernel/cmdline" || die "could not set the kernel command line"
+
+    # The chroot root must be a mount point: pacman finds free space through
+    # the mount table ("could not determine root mount point" otherwise).
+    mkdir -p "$ROOT"
+    mount --bind "$dst" "$ROOT"
+    mount --bind /var "$ROOT/var"
+    arch-chroot "$ROOT" pacman "$@"
+    say "Building the kernel image"
+    arch-chroot "$ROOT" mkinitcpio -P
+    umount "$ROOT/var" "$ROOT"
+    [[ -s $dst/boot/renner.efi ]] || die "no kernel image was built"
+
+    btrfs property set -ts "$dst" ro true
+    cp "$dst/boot/renner.efi" "$ESP/EFI/Linux/renner-$new+$TRIES.efi"
+    finished=1
+    trap - EXIT
+
+    prune
+    say "Done. Deployment $new boots next; the previous one stays in the boot menu."
+}
+
+[[ $EUID -eq 0 ]] || die "run as root (sudo renner-update)"
+[[ -n $booted && -n $uuid ]] || die "not booted from a renner.dev OS deployment"
+mountpoint -q "$ESP" || die "$ESP is not mounted"
+
+exec 9>/run/renner-update.lock
+flock -n 9 || die "another renner-update is running"
+
+case ${1:-upgrade} in
+    status) status ;;
+    upgrade) mount_top; transaction -Syu --noconfirm ;;
+    install) shift; (($#)) || die "install: no packages given"; mount_top; transaction -Syu --noconfirm --needed "$@" ;;
+    remove) shift; (($#)) || die "remove: no packages given"; mount_top; transaction -Rns --noconfirm "$@" ;;
+    -h | --help) sed -n '2,17p' "$0" | sed 's/^# \{0,1\}//' ;;
+    *) die "unknown command '$1' (try --help)" ;;
+esac

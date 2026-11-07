@@ -57,8 +57,36 @@ The closest match with plain Arch packages:
   running system never changes mid-update. The update is all or nothing.
 - **Every earlier state is a boot menu entry**, so rolling back is one pick at
   boot. This is the openSUSE Aeon / `transactional-update` model.
-- `/etc` gets a 3-way merge on update; `/home` and `/var` stay writable
-  subvolumes outside the snapshots.
+- `/home` and `/var` stay writable subvolumes outside the deployments.
+
+#### Implemented layout (install/install.sh, system/)
+
+| Piece | Where | Notes |
+| --- | --- | --- |
+| ESP (2 GiB, FAT32) | `/efi` | systemd-boot, one UKI per deployment in `EFI/Linux/` |
+| `@deployments/<id>` | `/` (read-only) | chosen by `rootflags=subvol=` in each UKI |
+| `@home` | `/home` | |
+| `@var` | `/var` | shared; `/root` and `/usr/local` are bind mounts from it |
+| `@etc-overlay` | upper layer of `/etc` | mounted in the initramfs (`renner-etc-overlay`) |
+| pacman database | `/usr/lib/sysimage/pacman` | inside the deployment, so a rollback restores it; `/var/lib/pacman` is a symlink |
+
+- **`/etc`:** an overlay with the deployment's `/etc` as the lower layer and
+  `@etc-overlay` as the upper. Files the user changed stay changed across
+  updates; every other file comes from the booted deployment. It is mounted
+  with `index=off`, because the lower layer changes with every update
+  (overlayfs otherwise refuses: "failed to verify upper root origin").
+  `renner.etc=off` on the kernel command line boots with a read-only `/etc`.
+- **`renner-update`:** snapshot of the booted deployment, `pacman` in a chroot of
+  the snapshot (live `pacman.conf` and mirrors are copied in), a new UKI, the
+  snapshot set read-only, and a boot entry with 3 tries (`renner-<id>+3.efi`).
+  A failed transaction deletes its snapshot. It keeps 3 deployments plus the
+  booted one.
+- **Rollback:** pick an older entry in the boot menu. A new deployment that
+  never boots cleanly 3 times in a row falls back automatically (systemd-boot
+  boot counting; `systemd-bless-boot` marks a good boot).
+- Known limit: if a package update adds a system user while the user's
+  `/etc/passwd` is in the upper layer, `systemd-sysusers` adds the user on the
+  next boot (it runs when `/usr` is newer than `/etc`).
 - **Software for users:** Flatpak through Discover for apps; Distrobox (an Arch
   container) for AUR and CLI tools; Windows software in Wine prefixes in
   `/home`. Host `pacman` runs only through `renner-update`.

@@ -1,0 +1,35 @@
+#!/bin/sh
+# renner.dev OS, runs in the initramfs before switch-root.
+#
+# The root deployment is read-only, including its /etc. This mounts a
+# writable overlay over /sysroot/etc whose upper layer lives in the btrfs
+# subvolume @etc-overlay, so local changes to /etc survive updates while
+# untouched files come from the booted deployment.
+#
+# Kernel command line: root=UUID=<btrfs uuid> is required;
+# renner.etc=off skips the overlay (read-only /etc, for repair).
+set -eu
+
+uuid=""
+for arg in $(cat /proc/cmdline); do
+    case $arg in
+        root=UUID=*) uuid=${arg#root=UUID=} ;;
+        renner.etc=off) echo "renner: /etc overlay disabled (renner.etc=off)"; exit 0 ;;
+    esac
+done
+if [ -z "$uuid" ]; then
+    echo "renner: no root=UUID= on the kernel command line; /etc stays read-only" >&2
+    exit 1
+fi
+
+state=/run/renner/etc-overlay
+mkdir -p "$state"
+mount -t btrfs -o subvol=/@etc-overlay,noatime "/dev/disk/by-uuid/$uuid" "$state"
+mkdir -p "$state/upper" "$state/work"
+# index=off: the lower layer is a different deployment after every update.
+# With the index on, overlayfs records the lower root in the upper layer and
+# refuses to mount it on top of a new deployment ("failed to verify upper
+# root origin"), which happened in the first lab test.
+mount -t overlay overlay \
+    -o "lowerdir=/sysroot/etc,upperdir=$state/upper,workdir=$state/work,index=off" /sysroot/etc
+echo "renner: /etc overlay mounted"

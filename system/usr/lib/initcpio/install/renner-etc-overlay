@@ -1,0 +1,21 @@
+#!/bin/bash
+# mkinitcpio install hook: adds the /etc overlay unit to a systemd initramfs.
+# HOOKS must contain `base` (for /bin/sh) and `systemd` before this hook.
+
+build() {
+    add_binary mount
+    add_binary mkdir
+    add_module overlay
+    add_module btrfs
+    add_file /usr/lib/renner-os/initrd-etc-overlay /usr/lib/renner-os/initrd-etc-overlay 755
+    add_file /usr/lib/systemd/system/renner-etc-overlay.service
+    add_symlink /usr/lib/systemd/system/initrd-root-fs.target.wants/renner-etc-overlay.service \
+        ../renner-etc-overlay.service
+}
+
+help() {
+    cat <<HELPEOF
+Mounts a writable overlay over the read-only /etc of a renner.dev OS
+deployment (upper layer in the btrfs subvolume @etc-overlay).
+HELPEOF
+}

@@ -11,6 +11,8 @@ Listens on 127.0.0.1 only. QEMU guests reach it as http://10.0.2.2:<port>:
   download before the first byte.
 - Repository databases (*.db, *.files and their signatures) are always
   fetched fresh, so updates stay visible.
+- With --files, the repo's install/ and system/ folders are served under
+  /renner/, so a guest can run the real `curl ... | bash` installer.
 - pacman checks every package signature itself, so the cache cannot
   smuggle anything in.
 
@@ -27,11 +29,14 @@ import sys
 import threading
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
-SAFE_PATH = re.compile(r"^/[A-Za-z0-9._+@~-]+(/[A-Za-z0-9._+@~-]+)*$")
+# Checked after URL-decoding. ':' appears in package names with an epoch
+# (wpa_supplicant-2:2.12-1); it is stored as %3A because Windows forbids ':'.
+SAFE_PATH = re.compile(r"^/[A-Za-z0-9._+@~:-]+(/[A-Za-z0-9._+@~:-]+)*$")
 PKG_FILE = re.compile(r"\.pkg\.tar\.(zst|xz|gz)(\.sig)?$")
 CHUNK = 1 << 20
 
@@ -42,7 +47,8 @@ class Cache:
         self.upstream = upstream.rstrip("/")
         self.token = token
         self.log = log
-        self.stats = {"hit": 0, "miss": 0, "pass": 0, "error": 0}
+        self.stats = {"hit": 0, "miss": 0, "pass": 0, "error": 0, "file": 0}
+        self.files: Path | None = None
         self.lock = threading.Lock()
         self.stop = threading.Event()
 
@@ -70,7 +76,7 @@ def make_handler(cache: Cache):
             self.handle_get(head=False)
 
         def handle_get(self, head: bool):
-            path = self.path.split("?", 1)[0]
+            path = urllib.parse.unquote(self.path.split("?", 1)[0])
             if path == "/_lab/quit":
                 ok = self.path.endswith(f"token={cache.token}")
                 self.send_simple(200 if ok else 403, b"bye\n" if ok else b"no\n")
@@ -84,8 +90,17 @@ def make_handler(cache: Cache):
             if not SAFE_PATH.match(path) or ".." in path:
                 self.send_simple(400, b"bad path\n")
                 return
+            if path.startswith("/renner/"):  # the repo's installer files, for curl | bash tests
+                rel = path[len("/renner/"):]
+                local = cache.files / rel if cache.files else None
+                if local and rel.split("/", 1)[0] in ("install", "system") and local.is_file():
+                    self.serve_file(local, head)
+                    self.note("file", local.stat().st_size)
+                else:
+                    self.send_simple(404, b"not found\n")
+                return
 
-            local = cache.root / path.lstrip("/")
+            local = cache.root / path.lstrip("/").replace(":", "%3A")
             if PKG_FILE.search(path) and local.is_file():
                 self.serve_file(local, head)
                 self.note("hit", local.stat().st_size)
@@ -135,7 +150,8 @@ def make_handler(cache: Cache):
                     left -= len(chunk)
 
         def proxy(self, path: str, store: Path | None, head: bool):
-            req = urllib.request.Request(cache.upstream + path, method="HEAD" if head else "GET")
+            url = cache.upstream + urllib.parse.quote(path, safe="/+@~")
+            req = urllib.request.Request(url, method="HEAD" if head else "GET")
             for name in ("Range", "If-Modified-Since", "If-None-Match"):
                 if name in self.headers:
                     req.add_header(name, self.headers[name])
@@ -205,6 +221,7 @@ def main() -> int:
     p.add_argument("--port", type=int, default=8079)
     p.add_argument("--minutes", type=int, default=120)
     p.add_argument("--token", default=os.environ.get("RENNER_PKGCACHE_TOKEN", ""))
+    p.add_argument("--files", type=Path, help="repo checkout served read-only under /renner/ (install/, system/)")
     a = p.parse_args()
 
     a.root.mkdir(parents=True, exist_ok=True)
@@ -218,6 +235,7 @@ def main() -> int:
             log_file.write(line + "\n")
 
     cache = Cache(a.root, a.upstream, a.token or secrets.token_hex(16), log)
+    cache.files = a.files.resolve() if a.files else None
     server = ThreadingHTTPServer(("127.0.0.1", a.port), make_handler(cache))
     server.daemon_threads = True
 

@@ -62,6 +62,29 @@ its time limit and records its PID like the VMs.
 Tested 2026-11-07: round 1 downloaded 12 packages (12 misses), and after the
 guest's cache was emptied, round 2 served all 12 from the local cache (12 hits).
 
+## Testing the installer
+
+`up` also starts the cache with `--files`, so the repo's `install/` and
+`system/` folders are served at `http://10.0.2.2:8079/renner/`. In the live
+system:
+
+```
+curl -fsSL http://10.0.2.2:8079/renner/install/install.sh | bash -s -- \
+  --source http://10.0.2.2:8079/renner --disk /dev/vda --hostname renner-lab \
+  --user test --password test --serial-console --yes
+```
+
+With `--serial-console`, the installed system logs its boot to
+`vms/<name>/serial.log`.
+
+## WHPX quirks (handled by the tool)
+
+- systemd-boot's menu countdown does not run, so `up` presses Enter twice.
+- A guest-triggered warm reset hangs, so QEMU runs with `-no-reboot`: a guest
+  `reboot` powers the VM off, and the next `up` does a cold boot.
+- `-boot once=d` is ignored once a disk has a boot entry, so the ISO gets
+  `bootindex=0`.
+
 ## Limits
 
 - No real GPU: a VM tests boot, A/B updates, rollback, KDE and the exe

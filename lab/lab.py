@@ -227,19 +227,25 @@ def cmd_up(a) -> None:
         "-smp", str(a.cpus), "-m", a.mem,
         "-drive", f"if=pflash,format=raw,readonly=on,file={QEMU_DIR / 'share/edk2-x86_64-code.fd'}",
         "-drive", f"if=pflash,format=qcow2,file={d / 'efivars.qcow2'}",
-        "-drive", f"if=virtio,format=qcow2,file={d / 'disk.qcow2'}",
+        "-drive", f"if=none,id=hd0,format=qcow2,file={d / 'disk.qcow2'}",
+        "-device", "virtio-blk-pci,drive=hd0,bootindex=1",
         "-device", "virtio-vga",
         "-device", "qemu-xhci", "-device", "usb-tablet",
         "-nic", "user,model=virtio-net-pci",
         "-audiodev", "none,id=snd0",
+        # A guest-triggered warm reset hangs under WHPX, so a guest reboot ends
+        # QEMU instead; `lab.py up` then does a cold boot.
+        "-no-reboot",
         "-qmp", f"tcp:127.0.0.1:{state['qmp_port']},server=on,wait=off",
         "-serial", f"file:{d / 'serial.log'}",
         "-vnc", f"127.0.0.1:{state['vnc_display']}",
         "-display", "sdl" if a.window else "none",
     ]
     if a.iso:
-        args += ["-drive", f"media=cdrom,format=raw,readonly=on,file={resolve_iso(a.iso)}",
-                 "-boot", "once=d"]
+        # bootindex, not -boot once=d: OVMF follows QEMU's boot order, but keeps
+        # booting an installed disk first when only -boot is given.
+        args += ["-drive", f"if=none,id=cd0,media=cdrom,format=raw,readonly=on,file={resolve_iso(a.iso)}",
+                 "-device", "ide-cd,bus=ide.0,drive=cd0,bootindex=0"]
     if not a.no_cache:  # keep the package cache alive at least as long as the VM
         s = cache_up(a.minutes + 10)
         if s["deadline"] < time.time() + a.minutes * 60:
@@ -263,9 +269,9 @@ def cmd_up(a) -> None:
             break
         except OSError:
             time.sleep(0.2)
-    if a.iso:
-        # The ISO's systemd-boot countdown does not run under WHPX, so pick the
-        # default entry ourselves. A second Enter covers a slow firmware start
+    if not a.no_enter:
+        # systemd-boot's countdown does not run under WHPX (ISO and installed
+        # system alike), so pick the default entry ourselves. A second Enter covers a slow firmware start
         # and is ignored once the kernel is loading.
         for delay in (6, 4):
             time.sleep(delay)
@@ -449,7 +455,8 @@ def cache_up(minutes: int) -> dict:
     with open(log, "ab") as fh:
         proc = subprocess.Popen(
             [sys.executable, str(Path(__file__).with_name("pkgcache.py")),
-             "--root", str(LAB / "pkgcache"), "--port", str(CACHE_PORT), "--minutes", str(minutes)],
+             "--root", str(LAB / "pkgcache"), "--port", str(CACHE_PORT), "--minutes", str(minutes),
+             "--files", str(Path(__file__).resolve().parents[1])],
             stdin=subprocess.DEVNULL, stdout=fh, stderr=subprocess.STDOUT,
             creationflags=flags, env=env_token, close_fds=True,
         )
@@ -525,6 +532,7 @@ def main() -> None:
     s.add_argument("--mem", default="8G")
     s.add_argument("--window", action="store_true", help="visible window; only when the owner asks")
     s.add_argument("--no-cache", action="store_true", help="don't start the package cache")
+    s.add_argument("--no-enter", action="store_true", help="don't press Enter at the boot menu")
     s.set_defaults(f=cmd_up)
     s = sub.add_parser("down"); s.add_argument("name"); s.set_defaults(f=cmd_down)
     s = sub.add_parser("status"); s.set_defaults(f=cmd_status)
