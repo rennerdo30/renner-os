@@ -13,6 +13,7 @@ echo "== build ($repo_wsl)"
 MSYS_NO_PATHCONV=1 wsl.exe -d renneros-build -- timeout 1800 bash "$repo_wsl/lab/wsl-build.sh" installer iso
 echo "== install into $VM"
 out=$(bash lab/test-iso.sh 2>&1) || true
+echo "$out" | grep -E "FAILED|timeout|page=" || true
 grep -E "RENNER-INSTALL-RC|renner login|test-iso-done" <<<"$out" || true
 grep -q "RENNER-INSTALL-RC=0" <<<"$out" || { echo "install failed; see $VM shots" >&2; exit 1; }
 if [[ ${1:-} == exe ]]; then

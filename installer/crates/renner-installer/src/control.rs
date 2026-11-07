@@ -9,7 +9,7 @@
 //!   next | back                        what the Next / Back buttons do
 
 use crate::gui::InstallerWindow;
-use slint::ComponentHandle;
+
 use std::io::{BufRead, BufReader, Write};
 use std::sync::mpsc;
 use std::time::Duration;
