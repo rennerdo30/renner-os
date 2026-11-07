@@ -271,10 +271,11 @@ def cmd_up(a) -> None:
             time.sleep(0.2)
     if not a.no_enter:
         # systemd-boot's countdown does not run under WHPX (ISO and installed
-        # system alike), so pick the default entry ourselves. A second Enter covers a slow firmware start
-        # and is ignored once the kernel is loading.
-        for delay in (6, 4):
-            time.sleep(delay)
+        # system alike), so pick the default entry ourselves. The menu shows up
+        # after a varying delay (slower with a visible window), so press Enter
+        # every 3 s for 30 s; later presses only add an empty line at a prompt.
+        for _ in range(10):
+            time.sleep(3)
             q = Qmp(state["qmp_port"])
             send_keys(q, ["ret"])
             q.close()
