@@ -25,12 +25,18 @@ check() {
 AS=(runuser -u "$USER_NAME" --)
 
 L exec $VM --wait-agent 180 -- true >/dev/null || { echo "FAILED: guest agent"; exit 1; }
-check "sched_ext scheduler"     "lavd"           sh -c 'cat /sys/kernel/sched_ext/state /sys/kernel/sched_ext/root/ops 2>&1'
+# The lab VM has no battery: a desktop, so EEVDF and no scx_loader.
+check "scheduler (desktop EEVDF)" "^disabled"    sh -c 'systemctl is-enabled scx_loader.service 2>&1; true'
+check "zswap off (zram swap)"   "^N"             cat /sys/module/zswap/parameters/enabled
+check "THP defrag"              "\\[defer\\+madvise\\]" cat /sys/kernel/mm/transparent_hugepage/defrag
+check "vm.dirty_bytes"          "268435456"      sysctl -n vm.dirty_bytes
+check "game-performance"        "game-performance" sh -c 'command -v game-performance'
 check "zram swap"               "zram0"          sh -c 'swapon --show=NAME --noheadings'
 check "vm.max_map_count"        "2147483642"     sysctl -n vm.max_map_count
 check "vm.swappiness"           "^180"           sysctl -n vm.swappiness
-check "kernel command line"     "split_lock_detect=off" cat /proc/cmdline
-check "GameMode"                "gamemoded"      sh -c 'command -v gamemoded'
+check "kernel command line"     "zswap.enabled=0" cat /proc/cmdline
+check "split locks not slowed"  "^0"             sysctl -n kernel.split_lock_mitigate
+check "GameMode (on request)"   "gamemoderun"    sh -c 'command -v gamemoderun'
 check "power profiles"          "^active"         systemctl is-active power-profiles-daemon
 check "systemd-oomd"            "^active"         systemctl is-active systemd-oomd
 check "Steam, OBS"              "steam.*obs"     sh -c 'command -v steam; command -v obs'

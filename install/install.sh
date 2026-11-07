@@ -64,8 +64,8 @@ DESKTOP_PACKAGES=(
     lib32-libxcomposite lib32-libxinerama lib32-freetype2 lib32-fontconfig lib32-gnutls
     lib32-libpulse lib32-alsa-lib lib32-alsa-plugins
     xdg-user-dirs libnotify
-    # Performance (RO-5): sched_ext scheduler and its loader, swap in RAM,
-    # GameMode for games (64 and 32 bit), power profiles for Plasma.
+    # Performance (RO-5): sched_ext scheduler and its loader (laptops), swap in
+    # RAM, power profiles for Plasma; GameMode only on request (gamemoderun).
     scx-scheds scx-tools zram-generator gamemode lib32-gamemode power-profiles-daemon
 )
 # GPU driver packages come from renner-gpu-detect (see install_desktop).
@@ -253,9 +253,11 @@ CompositorCommand=kwin_wayland --drm --no-lockscreen --no-global-shortcuts --loc
 [Theme]
 Current=breeze
 EOF
-    local units=(sddm.service bluetooth.service scx_loader.service power-profiles-daemon.service)
-    if [[ $NVIDIA_DRIVER == open ]]; then
-        units+=(nvidia-suspend.service nvidia-hibernate.service nvidia-resume.service)
+    local units=(sddm.service bluetooth.service power-profiles-daemon.service)
+    # Laptops and handhelds (a battery): scx_lavd; desktops keep EEVDF (RO-5).
+    if compgen -G "/sys/class/power_supply/BAT*" >/dev/null; then
+        units+=(scx_loader.service)
+        [[ $NVIDIA_DRIVER == open ]] && units+=(nvidia-powerd.service)
     fi
     ((GPU_MULTI)) && units+=(switcheroo-control.service)
     arch-chroot "$TARGET" systemctl enable "${units[@]}" >/dev/null
@@ -442,8 +444,9 @@ setup_boot() {
     local console=""
     ((SERIAL)) && console=" console=tty0 console=ttyS0,115200"
     install -d "$TARGET/etc/kernel"
-    # quiet boot; split_lock_detect=off: no slowdown for games that split locks (RO-5).
-    echo "root=UUID=$ROOT_UUID rootfstype=btrfs rootflags=subvol=/@deployments/$DEPLOYMENT,compress=zstd:1,noatime ro quiet loglevel=3 nowatchdog split_lock_detect=off$console" \
+    # Quiet boot; zswap off because swap is zram (Arch enables zswap, which
+    # keeps zram from working well) (RO-5).
+    echo "root=UUID=$ROOT_UUID rootfstype=btrfs rootflags=subvol=/@deployments/$DEPLOYMENT,compress=zstd:1,noatime ro quiet loglevel=3 nowatchdog zswap.enabled=0$console" \
         >"$TARGET/etc/kernel/cmdline"
 
     # With the NVIDIA driver, leave out `kms` so nouveau never loads early.

@@ -8,6 +8,7 @@ etc/xdg/kwinrc
 etc/xdg/menus/applications-merged/renner-windows.menu
 etc/xdg/mimeapps.list
 etc/xdg/plasmarc
+usr/bin/game-performance
 usr/bin/renner-exe
 usr/bin/renner-gpu-detect
 usr/bin/renner-launcher
@@ -27,9 +28,13 @@ usr/lib/systemd/system/renner-activate-var.service
 usr/lib/systemd/system/renner-apps.service
 usr/lib/systemd/system/renner-boot-health.service
 usr/lib/systemd/system/renner-etc-overlay.service
+usr/lib/systemd/system/system.slice.d/10-renner-oomd.conf
+usr/lib/systemd/system/user.slice.d/10-renner-oomd.conf
 usr/lib/systemd/zram-generator.conf
+usr/lib/tmpfiles.d/renner-thp.conf
 usr/lib/udev/rules.d/60-renner-ioschedulers.rules
 usr/lib/udev/rules.d/70-renner-ntsync.rules
+usr/lib/udev/rules.d/71-renner-nvidia-pm.rules
 usr/share/applications/kwil.desktop
 usr/share/applications/renner-exe.desktop
 usr/share/applications/renner-launcher.desktop

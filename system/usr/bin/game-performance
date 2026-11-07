@@ -1,0 +1,5 @@
+#!/bin/sh
+# renner.dev OS: run a game with the "performance" power profile while it runs
+# and no screen blanking (RO-5). In Steam: game-performance %command%
+exec systemd-inhibit --what=idle --who=game-performance --why="game running" \
+    powerprofilesctl launch -p performance -r "game running" -- "$@"

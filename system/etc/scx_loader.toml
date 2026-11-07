@@ -1,5 +1,7 @@
-# renner.dev OS: sched_ext CPU scheduler (RO-5). scx_lavd was built for the
-# Steam Deck: low latency for games and the desktop. If it ever fails, the
-# kernel falls back to its own scheduler by itself.
+# renner.dev OS: sched_ext CPU scheduler (RO-5). scx_loader only runs on
+# laptops and handhelds (the installer enables it when there is a battery);
+# desktops keep the kernel's EEVDF scheduler, like Bazzite and CachyOS.
+# scx_lavd (built for the Steam Deck) lowers latency and power use there; if it
+# ever fails, the kernel falls back to EEVDF by itself.
 default_sched = "scx_lavd"
 default_mode = "Auto"
