@@ -363,6 +363,22 @@ def cmd_type(a) -> None:
     q.close()
 
 
+def cmd_click(a) -> None:
+    """Left click at screen pixel X,Y through the USB tablet (absolute axes)."""
+    q = qmp_for(a.name)
+    ax = round(a.x * 32767 / max(a.width - 1, 1))
+    ay = round(a.y * 32767 / max(a.height - 1, 1))
+    q.cmd("input-send-event", events=[
+        {"type": "abs", "data": {"axis": "x", "value": ax}},
+        {"type": "abs", "data": {"axis": "y", "value": ay}},
+    ])
+    time.sleep(0.05)
+    for down in (True, False):
+        q.cmd("input-send-event", events=[{"type": "btn", "data": {"down": down, "button": "left"}}])
+        time.sleep(0.05)
+    q.close()
+
+
 def cmd_snap(a) -> None:
     # Disk snapshots of a stopped VM. WHPX cannot save a running VM's state
     # ("missing dirty memory tracking support"), so live savevm is not offered.
@@ -539,6 +555,10 @@ def main() -> None:
     s = sub.add_parser("shot"); s.add_argument("name"); s.add_argument("out", nargs="?"); s.set_defaults(f=cmd_shot)
     s = sub.add_parser("key"); s.add_argument("name"); s.add_argument("keys", nargs="+", help="qcodes, e.g. ret ctrl+alt+f2")
     s.set_defaults(f=cmd_key)
+    s = sub.add_parser("click", help="left click at a screen pixel (screenshot coordinates)")
+    s.add_argument("name"); s.add_argument("x", type=int); s.add_argument("y", type=int)
+    s.add_argument("--width", type=int, default=1280); s.add_argument("--height", type=int, default=800)
+    s.set_defaults(f=cmd_click)
     s = sub.add_parser("type"); s.add_argument("name"); s.add_argument("text"); s.add_argument("--enter", action="store_true")
     s.set_defaults(f=cmd_type)
     s = sub.add_parser("snap", help="disk snapshots of a stopped VM")

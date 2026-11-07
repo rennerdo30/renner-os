@@ -57,6 +57,26 @@ class Cache:
             self.stats[kind] += 1
 
 
+SOURCE_DIRS = ("installer", "install", "system")
+
+
+def source_tar(repo: Path) -> bytes:
+    """The parts of the repo the build VM needs, without build output."""
+    import io
+    import tarfile
+
+    buf = io.BytesIO()
+    with tarfile.open(fileobj=buf, mode="w") as tar:
+        for top in SOURCE_DIRS:
+            base = repo / top
+            for path in sorted(base.rglob("*")):
+                rel = path.relative_to(repo)
+                if "target" in rel.parts or "__pycache__" in rel.parts or not path.is_file():
+                    continue
+                tar.add(path, arcname=rel.as_posix(), recursive=False)
+    return buf.getvalue()
+
+
 def make_handler(cache: Cache):
     class Handler(BaseHTTPRequestHandler):
         protocol_version = "HTTP/1.1"
@@ -90,6 +110,18 @@ def make_handler(cache: Cache):
             if not SAFE_PATH.match(path) or ".." in path:
                 self.send_simple(400, b"bad path\n")
                 return
+            if path == "/renner/source.tar" and cache.files:  # build VM: the repo as a tar
+                self.serve_bytes(source_tar(cache.files), head)
+                self.note("file", "source.tar")
+                return
+            if path.startswith("/artifacts/"):  # build results uploaded by the build VM
+                local = cache.root.parent / "artifacts" / path[len("/artifacts/"):]
+                if local.is_file():
+                    self.serve_file(local, head)
+                    self.note("file", local.stat().st_size)
+                else:
+                    self.send_simple(404, b"not found\n")
+                return
             if path.startswith("/renner/"):  # the repo's installer files, for curl | bash tests
                 rel = path[len("/renner/"):]
                 local = cache.files / rel if cache.files else None
@@ -108,6 +140,43 @@ def make_handler(cache: Cache):
             # Only whole package downloads are cached; ranged requests pass through.
             cacheable = bool(PKG_FILE.search(path)) and "Range" not in self.headers
             self.proxy(path, local if cacheable else None, head)
+
+        def do_PUT(self):
+            # Lab only: the build VM uploads a built artifact (one flat name).
+            name = urllib.parse.unquote(self.path.split("?", 1)[0])
+            if not name.startswith("/_lab/artifacts/") or not re.fullmatch(r"[A-Za-z0-9._-]+", name[16:]):
+                self.send_simple(400, b"bad artifact name\n")
+                return
+            length = int(self.headers.get("Content-Length", "0"))
+            if not 0 < length <= 512 * 1024 * 1024:
+                self.send_simple(400, b"bad length\n")
+                return
+            target = cache.root.parent / "artifacts" / name[16:]
+            target.parent.mkdir(parents=True, exist_ok=True)
+            tmp = target.with_name(f".{target.name}.part")
+            left = length
+            with open(tmp, "wb") as out:
+                while left > 0:
+                    chunk = self.rfile.read(min(CHUNK, left))
+                    if not chunk:
+                        break
+                    out.write(chunk)
+                    left -= len(chunk)
+            if left:
+                tmp.unlink(missing_ok=True)
+                self.send_simple(400, b"short upload\n")
+                return
+            os.replace(tmp, target)
+            self.send_simple(201, b"stored\n")
+            self.note("file", f"upload {target.name} {length}")
+
+        def serve_bytes(self, data: bytes, head: bool):
+            self.send_response(200)
+            self.send_header("Content-Type", "application/octet-stream")
+            self.send_header("Content-Length", str(len(data)))
+            self.end_headers()
+            if not head:
+                self.wfile.write(data)
 
         def send_simple(self, code: int, body: bytes):
             self.send_response(code)
