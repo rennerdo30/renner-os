@@ -1,0 +1,218 @@
+#!/usr/bin/env bash
+# renner-exe: run a Windows program (.exe, .msi, .lnk, .bat/.cmd) as if it
+# were native. Called by a double-click (renner-exe.desktop), by the kernel
+# for ./app.exe (binfmt_misc via renner-exe-binfmt), by Dolphin's "Run in its
+# own prefix" action and by the start-menu entries it creates.
+#
+#   renner-exe [--own-prefix] [--] PROGRAM [ARGS...]
+#
+# Like one Windows (owner, 2026-11-07):
+#   - every program shares one default prefix, so there is one C: and one
+#     "Program Files"; an exe inside an existing prefix runs in that prefix;
+#     --own-prefix isolates a program that needs it;
+#   - every prefix sees the same user folders (Documents, Downloads, Desktop,
+#     Pictures, Music, Videos are the real home folders) and the same drive
+#     letters (H: home, D: E: ... removable media, Z: the whole system);
+#   - programs an installer puts into the Windows Start Menu appear in the
+#     KDE menu under "Windows apps".
+# Runner: umu-launcher with Proton (UMU-Proton by default; a Proton pinned in
+# the OS image when /usr/share/renner-os/proton/current exists).
+set -uo pipefail
+
+readonly SYSTEM_PROTON=/usr/share/renner-os/proton/current
+readonly DATA=${XDG_DATA_HOME:-$HOME/.local/share}
+readonly PREFIX_ROOT=$DATA/renner-os/prefixes
+readonly LOG_DIR=${XDG_STATE_HOME:-$HOME/.local/state}/renner-os/exe
+readonly MENU_DIR=$DATA/applications/renner-windows
+readonly DRIVES_FILE=$DATA/renner-os/drive-letters
+# A non-zero exit within this many seconds counts as "failed to start".
+readonly CRASH_WINDOW_SECONDS=10
+
+usage() { echo "usage: renner-exe [--own-prefix] [--] PROGRAM [ARGS...]"; }
+die() {
+    echo "renner-exe: $*" >&2
+    command -v notify-send >/dev/null && notify-send --app-name="Windows apps" --icon=dialog-error "Windows program" "$*"
+    exit 1
+}
+
+own_prefix=0
+while (($#)); do
+    case $1 in
+        --own-prefix) own_prefix=1; shift ;;
+        -h | --help) usage; exit 0 ;;
+        --) shift; break ;;
+        -*) usage >&2; exit 2 ;;
+        *) break ;;
+    esac
+done
+(($#)) || { usage >&2; exit 2; }
+
+target=$(realpath -e -- "$1") || die "no such file: $1"
+shift
+name=$(basename -- "$target")
+stem=${name%.*}
+
+slug() { printf '%s' "$1" | tr '[:upper:]' '[:lower:]' | tr -cs 'a-z0-9' '-' | sed 's/^-//; s/-$//'; }
+
+# Z: maps to / in every Wine prefix.
+to_windows_path() {
+    local p="Z:$1"
+    printf '%s' "${p//\//\\}"
+}
+
+# --- runner -----------------------------------------------------------------
+command -v umu-run >/dev/null || die "Proton (umu-launcher) is not installed"
+export GAMEID=${GAMEID:-umu-default}
+if [[ -z ${PROTONPATH:-} && -d $SYSTEM_PROTON ]]; then
+    export PROTONPATH=$SYSTEM_PROTON
+fi
+
+# --- prefix -----------------------------------------------------------------
+if [[ -n ${WINEPREFIX:-} ]]; then
+    prefix=$WINEPREFIX
+elif [[ $target == */drive_c/* && -f ${target%%/drive_c/*}/system.reg ]]; then
+    prefix=${target%%/drive_c/*}
+elif ((own_prefix)); then
+    prefix=$PREFIX_ROOT/$(slug "$stem")
+else
+    prefix=$PREFIX_ROOT/default
+fi
+mkdir -p -- "$prefix" "$LOG_DIR" "$MENU_DIR" || die "cannot create $prefix"
+export WINEPREFIX=$prefix
+log=$LOG_DIR/$(slug "$stem").log
+: >"$log"
+
+# The Windows user's profile folder inside the prefix (Proton: steamuser).
+user_dir() {
+    local d
+    for d in "$prefix/drive_c/users/steamuser" "$prefix/drive_c/users/$USER"; do
+        [[ -d $d ]] && { echo "$d"; return; }
+    done
+}
+
+# Documents, Downloads ... point at the real home folders, so every prefix
+# saves to the same place. Only empty folders are replaced.
+link_user_folders() {
+    local udir win xdg real
+    udir=$(user_dir) || return 0
+    [[ -n $udir ]] || return 0
+    for pair in Documents:DOCUMENTS Downloads:DOWNLOAD Desktop:DESKTOP Pictures:PICTURES Music:MUSIC Videos:VIDEOS; do
+        win=${pair%%:*}
+        xdg=${pair##*:}
+        real=$(xdg-user-dir "$xdg" 2>/dev/null)
+        [[ -n $real && $real != "$HOME" ]] || real=$HOME/$win
+        mkdir -p -- "$real"
+        if [[ -L $udir/$win ]]; then
+            continue
+        elif [[ -d $udir/$win ]]; then
+            rmdir -- "$udir/$win" 2>/dev/null || continue   # not empty: leave it
+        fi
+        ln -s -- "$real" "$udir/$win"
+    done
+}
+
+# Drive letters, the same in every prefix: H: home, Z: /, and removable media
+# (/run/media/$USER/<label>) on D: onwards; a medium keeps its letter.
+map_drives() {
+    local dd=$prefix/dosdevices letter label used
+    [[ -d $dd ]] || return 0
+    ln -sfn -- "$HOME" "$dd/h:"
+    ln -sfn -- / "$dd/z:"
+    touch "$DRIVES_FILE"
+    for media in /run/media/"$USER"/*; do
+        [[ -d $media ]] || continue
+        label=$(basename -- "$media")
+        letter=$(awk -F= -v l="$label" '$1 == l { print $2 }' "$DRIVES_FILE")
+        if [[ -z $letter ]]; then
+            used=$(cut -d= -f2 "$DRIVES_FILE" | tr -d '\n')
+            for letter in d e f g i j k l m n o p q r s t u v w x y; do
+                [[ $used == *"$letter"* ]] || break
+            done
+            echo "$label=$letter" >>"$DRIVES_FILE"
+        fi
+        ln -sfn -- "$media" "$dd/$letter:"
+    done
+}
+
+ensure_prefix() {
+    if [[ ! -f $prefix/system.reg ]]; then
+        command -v notify-send >/dev/null && notify-send --app-name="Windows apps" --icon=application-x-ms-dos-executable \
+            "Setting up Windows support" "The first start takes a minute."
+        echo "== creating prefix $prefix" >>"$log"
+        umu-run wineboot -u >>"$log" 2>&1 || die "could not set up the Windows environment (log: $log)"
+    fi
+    link_user_folders
+    map_drives
+}
+
+# Start-menu shortcuts an installer created become KDE menu entries under
+# "Windows apps"; entries whose shortcut disappeared are removed.
+sync_menu() {
+    local tag lnk title file
+    tag=$(slug "$(basename -- "$prefix")")
+    declare -A keep=()
+    while IFS= read -r -d '' lnk; do
+        title=$(basename -- "$lnk" .lnk)
+        [[ $title =~ ^[Uu]ninstall ]] && continue
+        file="$MENU_DIR/$tag-$(slug "$title").desktop"
+        keep[$file]=1
+        cat >"$file" <<EOF
+[Desktop Entry]
+Type=Application
+Name=$title
+Comment=Windows program
+Exec=/usr/bin/renner-exe "$lnk"
+Icon=application-x-ms-dos-executable
+Categories=X-Renner-Windows;
+EOF
+    done < <(find "$prefix/drive_c/ProgramData/Microsoft/Windows/Start Menu" \
+                  "$prefix/drive_c/users" -path '*Start Menu*' -name '*.lnk' -print0 2>/dev/null)
+    for file in "$MENU_DIR/$tag-"*.desktop; do
+        [[ -e $file && -z ${keep[$file]:-} ]] && rm -f -- "$file"
+    done
+    command -v kbuildsycoca6 >/dev/null && kbuildsycoca6 >/dev/null 2>&1 &
+}
+
+ensure_prefix
+
+# --- what to run --------------------------------------------------------------
+shopt -s nocasematch
+case $name in
+    *.msi) cmd=(msiexec /i "$(to_windows_path "$target")") ;;
+    *.lnk) cmd=(start /unix "$target") ;;
+    *.bat | *.cmd) cmd=(cmd /c "$(to_windows_path "$target")") ;;
+    *) cmd=("$target") ;;
+esac
+shopt -u nocasematch
+
+# Windows programs expect to start in their own folder.
+cd -- "$(dirname -- "$target")" || die "cannot enter $(dirname -- "$target")"
+
+{
+    echo "== $(date -Is) renner-exe"
+    echo "program: $target"
+    echo "prefix:  $WINEPREFIX"
+    echo "proton:  ${PROTONPATH:-UMU-Proton (default)}"
+} >>"$log"
+
+start=$SECONDS
+if [[ -t 1 ]]; then
+    umu-run "${cmd[@]}" "$@" 2>&1 | tee -a "$log"
+    status=${PIPESTATUS[0]}
+else
+    umu-run "${cmd[@]}" "$@" >>"$log" 2>&1
+    status=$?
+fi
+echo "== exit $status after $((SECONDS - start)) s" >>"$log"
+
+sync_menu
+
+if ((status != 0 && SECONDS - start < CRASH_WINDOW_SECONDS)) && command -v notify-send >/dev/null; then
+    (
+        action=$(notify-send --app-name="Windows apps" --icon=dialog-error \
+            --action=log="Open log" "$name could not start" "It exited with code $status.") || exit 0
+        [[ $action == log ]] && xdg-open "$log"
+    ) </dev/null >/dev/null 2>&1 &
+    disown
+fi
+exit "$status"
