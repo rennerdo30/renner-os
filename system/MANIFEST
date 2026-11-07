@@ -30,6 +30,7 @@ usr/share/applications/renner-exe.desktop
 usr/share/applications/renner-launcher.desktop
 usr/share/color-schemes/RennerDark.colors
 usr/share/desktop-directories/renner-windows.directory
+usr/share/icons/hicolor/256x256/apps/renner-launcher.png
 usr/share/icons/hicolor/scalable/apps/kwil.svg
 usr/share/icons/hicolor/scalable/apps/renner-start.svg
 usr/share/kio/servicemenus/renner-exe.desktop
