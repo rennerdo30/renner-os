@@ -273,8 +273,19 @@ install_apps() {
     say "Adding apps (Chrome, Zen, Kwil, renner.dev Launcher)"
     arch-chroot "$TARGET" flatpak remote-add --system --if-not-exists flathub \
         https://dl.flathub.org/repo/flathub.flatpakrepo || die "could not add Flathub"
-    arch-chroot "$TARGET" flatpak install --system --noninteractive -y flathub "${FLATPAK_APPS[@]}" \
-        || die "could not install ${FLATPAK_APPS[*]} from Flathub"
+    # In a container, not a chroot: apps such as Chrome run a setup step in
+    # Flatpak's sandbox, which needs a real root (bubblewrap's pivot_root).
+    # Whatever still fails is finished on the first boot (renner-apps.service).
+    local app pending=()
+    for app in "${FLATPAK_APPS[@]}"; do
+        systemd-nspawn -q -D "$TARGET" flatpak install --system --noninteractive -y flathub "$app" \
+            || pending+=("$app")
+    done
+    if ((${#pending[@]})); then
+        echo "    finishing on the first boot: ${pending[*]}"
+        install -d "$TARGET/var/lib/renner-os"
+        printf '%s\n' "${pending[@]}" >"$TARGET/var/lib/renner-os/pending-flatpaks"
+    fi
 
     local json url archive dir=$TARGET/usr/lib/kwil
     json=$(curl -fsSL --retry 2 "$KWIL_RELEASES") || die "cannot reach the Kwil releases"
@@ -329,7 +340,8 @@ install_system_files() {
         mode=644
         case $f in
             usr/bin/* | usr/lib/renner-os/activate | usr/lib/renner-os/boot-health \
-                | usr/lib/renner-os/initrd-etc-overlay | usr/lib/renner-os/renner-exe-binfmt) mode=755 ;;
+                | usr/lib/renner-os/initrd-etc-overlay | usr/lib/renner-os/renner-exe-binfmt \
+                | usr/lib/renner-os/apps-finish) mode=755 ;;
         esac
         install -Dm"$mode" "$STAGING/$f" "$TARGET/$f"
     done
@@ -383,6 +395,8 @@ EOF
     arch-chroot "$TARGET" systemctl enable NetworkManager.service systemd-timesyncd.service \
         systemd-boot-update.service renner-activate-accounts.service renner-activate-var.service \
         renner-boot-health.service >/dev/null
+    # Finishes Flatpak apps the installer could not (it does nothing otherwise).
+    if ((DESKTOP)); then arch-chroot "$TARGET" systemctl enable renner-apps.service >/dev/null; fi
 }
 
 setup_boot() {

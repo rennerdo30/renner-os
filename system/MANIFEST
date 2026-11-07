@@ -14,12 +14,14 @@ usr/lib/binfmt.d/renner-exe.conf
 usr/lib/initcpio/install/renner-etc-overlay
 usr/lib/modules-load.d/renner-ntsync.conf
 usr/lib/renner-os/activate
+usr/lib/renner-os/apps-finish
 usr/lib/renner-os/boot-health
 usr/lib/renner-os/essential.units
 usr/lib/renner-os/initrd-etc-overlay
 usr/lib/renner-os/renner-exe-binfmt
 usr/lib/systemd/system/renner-activate-accounts.service
 usr/lib/systemd/system/renner-activate-var.service
+usr/lib/systemd/system/renner-apps.service
 usr/lib/systemd/system/renner-boot-health.service
 usr/lib/systemd/system/renner-etc-overlay.service
 usr/lib/udev/rules.d/70-renner-ntsync.rules

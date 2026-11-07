@@ -1,0 +1,14 @@
+[Unit]
+Description=renner.dev OS: finish installing preinstalled apps
+ConditionPathExists=/var/lib/renner-os/pending-flatpaks
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/lib/renner-os/apps-finish
+Restart=on-failure
+RestartSec=60
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,10 @@
+#!/bin/bash
+# Installs the Flatpak apps the installer could not (listed in
+# /var/lib/renner-os/pending-flatpaks), then removes the list.
+set -euo pipefail
+list=/var/lib/renner-os/pending-flatpaks
+mapfile -t apps <"$list"
+if ((${#apps[@]})); then
+    flatpak install --system --noninteractive -y flathub "${apps[@]}"
+fi
+rm -f "$list"
