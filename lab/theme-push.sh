@@ -19,7 +19,7 @@ python theme/colors.py >/dev/null
 python theme/plasma_style.py >/dev/null
 python theme/manifest.py >/dev/null
 # Theme-related parts of system/ (the rest needs a real update).
-tar -C system -cf "$ART/theme.tar" \
+tar --force-local -C system -cf "$ART/theme.tar" \
     usr/share/plasma usr/share/color-schemes usr/share/icons usr/share/wallpapers \
     etc/xdg/kdeglobals etc/xdg/kwinrc etc/xdg/breezerc etc/xdg/darklyrc etc/xdg/plasmarc \
     etc/xdg/ksplashrc etc/xdg/kscreenlockerrc
