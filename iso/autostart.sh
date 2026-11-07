@@ -25,6 +25,7 @@ param() {  # param NAME -> value of NAME= on the kernel command line
 mirror=$(param renner.mirror) || mirror=
 source=$(param renner.source) || source="file://$MEDIA/source"
 serial=$(param renner.serial) || serial=0
+test=$(param renner.test) || test=0
 
 # Typing renner-install starts it again (after connecting Wi-Fi, or after quitting).
 cat >/usr/local/bin/renner-install <<EOF
@@ -47,6 +48,11 @@ export RENNER_PKGS="$MEDIA/pkgs"
 export RENNER_INSTALLER_URL="file://$MEDIA/renner-installer"
 export RENNER_SOURCE="$source"
 [[ $serial == 1 ]] && export RENNER_SERIAL_CONSOLE=1
+# Lab: the installer takes commands on the second serial port (control.rs).
+if [[ $test == 1 && -e /dev/ttyS1 ]]; then
+    stty -F /dev/ttyS1 raw -echo 115200
+    export RENNER_TEST_CONTROL=/dev/ttyS1
+fi
 
 bash "$MEDIA/source/install/bootstrap.sh" "$@"
 rc=$?

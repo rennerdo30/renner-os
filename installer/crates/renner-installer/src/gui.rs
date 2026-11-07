@@ -370,5 +370,8 @@ pub fn run() -> Result<()> {
         let _ = Command::new("systemctl").arg("reboot").status();
     });
 
+    if let Ok(device) = std::env::var("RENNER_TEST_CONTROL") {
+        crate::control::start(device, ui.as_weak());
+    }
     ui.run().map_err(|e| anyhow!("installer window failed: {e}"))
 }

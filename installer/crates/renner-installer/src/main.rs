@@ -14,6 +14,8 @@ use std::process::ExitCode;
 #[cfg(feature = "gui")]
 mod console;
 #[cfg(feature = "gui")]
+mod control;
+#[cfg(feature = "gui")]
 mod gui;
 #[cfg(feature = "gui")]
 mod network;

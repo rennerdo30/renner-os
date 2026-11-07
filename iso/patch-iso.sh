@@ -15,14 +15,15 @@
 #
 #   iso/patch-iso.sh --iso archlinux-YYYY.MM.DD-x86_64.iso --installer renner-installer \
 #                    [--out renner-os-installer.iso] [--sha256 HEX]
-#                    [--mirror URL] [--source URL] [--serial-console]
+#                    [--mirror URL] [--source URL] [--serial-console] [--test]
+#   --test: the installer takes lab commands on the second serial port
 #
 # Needs: xorriso (libisoburn), mtools, coreutils, and pacman with synced
 # package databases (an Arch system or the lab's WSL distro) for pkgs/.
 set -Eeuo pipefail
 
 REPO=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
-ISO= OUT= INSTALLER= SHA= MIRROR= SOURCE= SERIAL=0 TIMEOUT=3
+ISO= OUT= INSTALLER= SHA= MIRROR= SOURCE= SERIAL=0 TEST=0 TIMEOUT=3
 
 say() { printf '\033[1m==> %s\033[0m\n' "$*"; }
 die() { printf '\033[31mpatch-iso: %s\033[0m\n' "$*" >&2; exit 1; }
@@ -36,6 +37,7 @@ while (($#)); do
         --mirror) MIRROR=$2; shift ;;
         --source) SOURCE=$2; shift ;;
         --serial-console) SERIAL=1 ;;
+        --test) TEST=1 ;;
         --timeout) TIMEOUT=$2; shift ;;
         -h|--help) sed -n '2,19p' "$0"; exit 0 ;;
         *) die "unknown option: $1" ;;
@@ -111,6 +113,7 @@ options="$basedir $uuid copytoram=n script=/run/archiso/bootmnt/renner/autostart
 [[ -n $MIRROR ]] && options+=" renner.mirror=$MIRROR"
 [[ -n $SOURCE ]] && options+=" renner.source=$SOURCE"
 ((SERIAL)) && options+=" renner.serial=1 console=tty0 console=ttyS0,115200"
+((TEST)) && options+=" renner.test=1"
 
 # systemd-boot (UEFI): a new first entry, the default, short timeout.
 cat >"$WORK/00-renner-installer.conf" <<EOF

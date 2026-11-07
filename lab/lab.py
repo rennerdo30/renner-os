@@ -235,6 +235,9 @@ def cmd_up(a) -> None:
         # QEMU instead; `lab.py up` then does a cold boot.
         "-no-reboot",
         "-qmp", f"tcp:127.0.0.1:{state['qmp_port']},server=on,wait=off",
+        # Second serial port (ttyS1): the installer's lab control channel.
+        "-chardev", f"socket,id=ctl,host=127.0.0.1,port={ctl_port(state)},server=on,wait=off",
+        "-device", "isa-serial,chardev=ctl",
         "-serial", f"file:{d / 'serial.log'}",
         "-vnc", f"127.0.0.1:{state['vnc_display']}",
         "-display", "sdl" if a.window else "none",
@@ -354,6 +357,45 @@ def cmd_key(a) -> None:
     for combo in a.keys:
         send_keys(q, combo.split("+"))
     q.close()
+
+
+def ctl_port(state: dict) -> int:
+    return state["qmp_port"] + 100
+
+
+def ui_command(name: str, line: str, timeout: float = 15.0) -> str:
+    """One command to the installer's control channel; returns its reply."""
+    state = load_state(name)
+    with socket.create_connection(("127.0.0.1", ctl_port(state)), timeout=timeout) as s:
+        s.sendall(line.encode() + b"\n")
+        data = b""
+        while not data.endswith(b"\n"):
+            chunk = s.recv(4096)
+            if not chunk:
+                break
+            data += chunk
+    return data.decode(errors="replace").strip()
+
+
+def cmd_ui(a) -> None:
+    """Drive the installer: lab.py ui VM CMD...  |  lab.py ui VM --wait-page N [--timeout S]"""
+    if a.wait_page is not None:
+        end = time.time() + a.timeout
+        reply = ""
+        while time.time() < end:
+            try:
+                reply = ui_command(a.name, "state", timeout=5)
+            except OSError:
+                reply = "no reply"
+            if reply.startswith(f"page={a.wait_page} ") or (a.fail_page and reply.startswith(f"page={a.fail_page} ")):
+                print(reply)
+                sys.exit(0 if reply.startswith(f"page={a.wait_page} ") else 1)
+            time.sleep(2)
+        sys.exit(f"timeout waiting for page {a.wait_page}; last: {reply}")
+    reply = ui_command(a.name, " ".join(a.command))
+    print(reply)
+    if reply.startswith("err"):
+        sys.exit(1)
 
 
 def cmd_type(a) -> None:
@@ -563,6 +605,10 @@ def main() -> None:
     s.add_argument("--width", type=int, default=1280); s.add_argument("--height", type=int, default=800)
     s.set_defaults(f=cmd_click)
     s = sub.add_parser("type"); s.add_argument("name"); s.add_argument("text"); s.add_argument("--enter", action="store_true")
+    s = sub.add_parser("ui", help="drive the installer over its control channel (renner.test=1)")
+    s.add_argument("name"); s.add_argument("command", nargs="*")
+    s.add_argument("--wait-page", type=int); s.add_argument("--fail-page", type=int)
+    s.add_argument("--timeout", type=float, default=120); s.set_defaults(f=cmd_ui)
     s.set_defaults(f=cmd_type)
     s = sub.add_parser("snap", help="disk snapshots of a stopped VM")
     s.add_argument("name"); s.add_argument("action", choices=("save", "load", "delete", "list"))
