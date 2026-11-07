@@ -430,8 +430,8 @@ EOF
     # The Darkly look when Darkly is installed (else Breeze stays): widget style
     # and window frames; its own settings app is hidden from the menu.
     if [[ -e $TARGET/usr/lib/qt6/plugins/styles/darkly6.so ]]; then
-        sed -i 's/^widgetStyle=Breeze$/widgetStyle=Darkly/' "$TARGET/etc/xdg/kdeglobals"
-        sed -i 's/^library=org.kde.breeze$/library=org.kde.darkly/; s/^theme=Breeze$/theme=Darkly/' "$TARGET/etc/xdg/kwinrc"
+        sed -i 's/^widgetStyle=Breeze$/widgetStyle=Darkly/' "$TARGET/usr/share/renner-os/xdg/kdeglobals"
+        sed -i 's/^library=org.kde.breeze$/library=org.kde.darkly/; s/^theme=Breeze$/theme=Darkly/' "$TARGET/usr/share/renner-os/xdg/kwinrc"
         rm -f "$TARGET/usr/share/applications/darklystyleconfig.desktop" \
               "$TARGET/usr/share/applications/kcm_darklydecoration.desktop"
     fi

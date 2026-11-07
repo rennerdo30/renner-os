@@ -2,7 +2,8 @@
 """renner.dev OS color scheme, from the renner.dev brand tokens.
 
 Writes the KDE color scheme (usr/share/color-schemes/RennerDark.colors) and the
-same color groups into the system-wide kdeglobals defaults (etc/xdg/kdeglobals):
+same color groups into the system-wide kdeglobals defaults
+(usr/share/renner-os/xdg/kdeglobals, on XDG_CONFIG_DIRS after /etc/xdg):
 KDE applications read their colors from kdeglobals, so a new user gets the
 scheme before anything is "applied". Run after changing a token:
 
@@ -126,10 +127,10 @@ def main() -> None:
         # A Windows-sized System Settings: KDE's expert pages are hidden (Kiosk).
         "KDE Control Module Restrictions": {m: "false" for m in HIDDEN_SETTINGS},
     }
-    target = SYSTEM / "etc/xdg/kdeglobals"
+    target = SYSTEM / "usr/share/renner-os/xdg/kdeglobals"
     target.parent.mkdir(parents=True, exist_ok=True)
     target.write_text(render(kdeglobals), newline="\n")
-    print("wrote RennerDark.colors and etc/xdg/kdeglobals")
+    print("wrote RennerDark.colors and usr/share/renner-os/xdg/kdeglobals")
 
 
 if __name__ == "__main__":

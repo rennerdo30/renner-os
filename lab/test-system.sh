@@ -23,7 +23,8 @@ check() {
         failed=1
     fi
 }
-AS=(runuser -u "$USER_NAME" --)
+# As in the user's session (environment.d sets XDG_CONFIG_DIRS there).
+AS=(runuser -u "$USER_NAME" -- env XDG_CONFIG_DIRS=/etc/xdg:/usr/share/renner-os/xdg)
 
 L exec $VM --wait-agent 180 -- true >/dev/null || { echo "FAILED: guest agent"; exit 1; }
 # The lab VM has no battery: a desktop, so EEVDF and no scx_loader.
@@ -48,15 +49,17 @@ check "no Firefox, no Kate"     "^ *$"           sh -c 'command -v firefox kate 
 check "default browser"         "Chrome"         "${AS[@]}" xdg-mime query default x-scheme-handler/https
 check "default text editor"     "kwil"           "${AS[@]}" xdg-mime query default text/plain
 check "default for .exe"        "renner-exe"     "${AS[@]}" xdg-mime query default application/x-ms-dos-executable
-check "Plasma style"            "renner"         sh -c 'cat /etc/xdg/plasmarc'
-check "global theme"            "dev.renner"     sh -c 'grep LookAndFeelPackage /etc/xdg/kdeglobals'
-check "settings pages hidden"   "kcm_kwin_effects=false" sh -c 'grep kcm_kwin_effects /etc/xdg/kdeglobals'
-check "widget style Darkly"     "widgetStyle=Darkly" sh -c 'grep widgetStyle /etc/xdg/kdeglobals'
-check "window frames Darkly"    "org.kde.darkly" sh -c 'grep ^library /etc/xdg/kwinrc'
+check "Plasma style"            "renner"         sh -c 'cat /usr/share/renner-os/xdg/plasmarc'
+check "global theme"            "dev.renner"     sh -c 'grep LookAndFeelPackage /usr/share/renner-os/xdg/kdeglobals'
+check "settings pages hidden"   "kcm_kwin_effects=false" sh -c 'grep kcm_kwin_effects /usr/share/renner-os/xdg/kdeglobals'
+check "widget style Darkly"     "widgetStyle=Darkly" sh -c 'grep widgetStyle /usr/share/renner-os/xdg/kdeglobals'
+check "window frames Darkly"    "org.kde.darkly" sh -c 'grep ^library /usr/share/renner-os/xdg/kwinrc'
 check "no Breeze global themes"  "^0 *$"  sh -c 'ls -d /usr/share/plasma/look-and-feel/org.kde.breeze* 2>/dev/null | wc -l'
 # The lock screen must still work without the Breeze global theme: lock, see
 # the greeter run, unlock again.
 check "lock screen works"       "kscreenlocker_greet" sh -c 'loginctl lock-sessions; sleep 4; pgrep -af kscreenlocker_greet; loginctl unlock-sessions'
-check "renner splash"           "dev.renner"     sh -c 'cat /etc/xdg/ksplashrc'
+check "renner splash"           "dev.renner"     sh -c 'cat /usr/share/renner-os/xdg/ksplashrc'
 check "only renner colors"      "^RennerDark.colors *$" sh -c 'ls /usr/share/color-schemes/'
+check "defaults in the image"    "renner-os/xdg"  cat /usr/lib/environment.d/40-renner-xdg.conf
+check "app colors defined"      "Colors:View"    grep -o Colors:View /usr/share/renner-os/xdg/kdeglobals
 exit $failed
