@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Service
+MimeType=application/x-ms-dos-executable;application/x-msdownload;application/vnd.microsoft.portable-executable;application/x-msi;
+X-KDE-Priority=TopLevel
+Actions=ownPrefix;
+
+[Desktop Action ownPrefix]
+Name=Run in its own Windows environment
+Icon=application-x-ms-dos-executable
+Exec=/usr/bin/renner-exe --own-prefix %f

@@ -1,0 +1,4 @@
+#!/bin/sh
+# binfmt_misc interpreter for Windows programs (MZ header): ./app.exe in a
+# terminal runs it through renner-exe (/usr/lib/binfmt.d/renner-exe.conf).
+exec /usr/bin/renner-exe -- "$@"

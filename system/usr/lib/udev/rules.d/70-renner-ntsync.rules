@@ -1,0 +1,3 @@
+# renner.dev OS: Wine/Proton need /dev/ntsync as the user; it only offers
+# synchronisation objects to the process that opens it.
+KERNEL=="ntsync", MODE="0666"

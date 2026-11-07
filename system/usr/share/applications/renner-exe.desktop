@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=Windows program
+Comment=Run Windows programs with Proton
+Exec=/usr/bin/renner-exe %f
+Icon=application-x-ms-dos-executable
+MimeType=application/x-ms-dos-executable;application/x-msdownload;application/vnd.microsoft.portable-executable;application/x-msi;application/x-ms-shortcut;application/x-bat;
+NoDisplay=true
+Terminal=false
+Categories=System;

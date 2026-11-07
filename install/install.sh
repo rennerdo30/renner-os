@@ -41,6 +41,16 @@ SYSTEM_FILES=(
     usr/lib/systemd/system/renner-activate-accounts.service
     usr/lib/systemd/system/renner-activate-var.service
     usr/lib/systemd/system/renner-boot-health.service
+    usr/bin/renner-exe
+    usr/lib/renner-os/renner-exe-binfmt
+    usr/lib/binfmt.d/renner-exe.conf
+    usr/share/applications/renner-exe.desktop
+    usr/share/kio/servicemenus/renner-exe.desktop
+    usr/share/desktop-directories/renner-windows.directory
+    etc/xdg/mimeapps.list
+    etc/xdg/menus/applications-merged/renner-windows.menu
+    usr/lib/modules-load.d/renner-ntsync.conf
+    usr/lib/udev/rules.d/70-renner-ntsync.rules
 )
 
 PACKAGES=(
@@ -57,6 +67,9 @@ DESKTOP_PACKAGES=(
     pipewire pipewire-pulse pipewire-alsa pipewire-jack wireplumber
     inter-font ttf-jetbrains-mono noto-fonts noto-fonts-emoji noto-fonts-cjk
     flatpak bluez bluez-utils firefox
+    # Windows programs (renner-exe): Proton through umu-launcher, home folders
+    # for the shared Documents/Downloads mapping, desktop notifications.
+    umu-launcher xdg-user-dirs libnotify
 )
 # GPU driver packages come from renner-gpu-detect (see install_desktop).
 GPU_PACKAGES=() NVIDIA_DRIVER=none GPU_MULTI=0
@@ -255,7 +268,7 @@ install_system_files() {
         mode=644
         case $f in
             usr/bin/* | usr/lib/renner-os/activate | usr/lib/renner-os/boot-health \
-                | usr/lib/renner-os/initrd-etc-overlay) mode=755 ;;
+                | usr/lib/renner-os/initrd-etc-overlay | usr/lib/renner-os/renner-exe-binfmt) mode=755 ;;
         esac
         install -Dm"$mode" "$STAGING/$f" "$TARGET/$f"
     done

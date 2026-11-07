@@ -1,0 +1,8 @@
+# renner.dev OS: Windows programs open with renner-exe by default.
+[Default Applications]
+application/x-ms-dos-executable=renner-exe.desktop
+application/x-msdownload=renner-exe.desktop
+application/vnd.microsoft.portable-executable=renner-exe.desktop
+application/x-msi=renner-exe.desktop
+application/x-ms-shortcut=renner-exe.desktop
+application/x-bat=renner-exe.desktop

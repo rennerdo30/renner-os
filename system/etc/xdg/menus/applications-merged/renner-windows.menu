@@ -1,0 +1,11 @@
+<!DOCTYPE Menu PUBLIC "-//freedesktop//DTD Menu 1.0//EN"
+ "http://www.freedesktop.org/standards/menu-spec/1.0/menu.dtd">
+<!-- renner.dev OS: programs installed by Windows installers (renner-exe). -->
+<Menu>
+  <Name>Applications</Name>
+  <Menu>
+    <Name>Windows apps</Name>
+    <Directory>renner-windows.directory</Directory>
+    <Include><Category>X-Renner-Windows</Category></Include>
+  </Menu>
+</Menu>
