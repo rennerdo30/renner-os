@@ -1,0 +1,16 @@
+[Unit]
+Description=renner.dev OS deployment activation: package files in /var
+Documentation=https://github.com/rennerdo30/renner-os
+DefaultDependencies=no
+RequiresMountsFor=/var
+After=local-fs.target
+Before=systemd-tmpfiles-setup.service sysinit.target shutdown.target
+Conflicts=shutdown.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/lib/renner-os/activate var
+
+[Install]
+WantedBy=sysinit.target

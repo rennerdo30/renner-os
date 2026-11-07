@@ -19,7 +19,8 @@ jobs:
       - name: Shell syntax
         run: |
           for f in packages/renner-exe/renner-exe install/install.sh \
-                   system/usr/bin/renner-update system/usr/lib/initcpio/install/renner-etc-overlay; do
+                   system/usr/bin/renner-update system/usr/lib/initcpio/install/renner-etc-overlay \
+                   system/usr/lib/renner-os/activate system/usr/lib/renner-os/boot-health; do
             bash -n "$f"
           done
           sh -n system/usr/lib/renner-os/initrd-etc-overlay

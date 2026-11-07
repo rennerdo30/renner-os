@@ -1,0 +1,18 @@
+[Unit]
+Description=renner.dev OS deployment activation: system accounts
+Documentation=https://github.com/rennerdo30/renner-os
+# Runs where systemd-sysusers runs: before local-fs.target. Only / and /etc
+# (mounted by the initramfs) are needed. Ordering it after local-fs.target
+# instead creates a cycle (sysusers -> tmpfiles-setup-dev -> local-fs-pre).
+DefaultDependencies=no
+After=systemd-remount-fs.service
+Before=systemd-sysusers.service sysinit.target shutdown.target
+Conflicts=shutdown.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/lib/renner-os/activate accounts
+
+[Install]
+WantedBy=sysinit.target

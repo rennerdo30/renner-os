@@ -1,0 +1,13 @@
+[Unit]
+Description=renner.dev OS boot health check for boot counting
+Documentation=https://github.com/rennerdo30/renner-os
+After=multi-user.target graphical.target
+Before=boot-complete.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/lib/renner-os/boot-health
+
+[Install]
+RequiredBy=boot-complete.target

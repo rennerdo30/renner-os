@@ -1,0 +1,35 @@
+#!/usr/bin/env bash
+# renner.dev OS boot health check (renner-boot-health.service).
+#
+# Required by boot-complete.target: systemd-boot's boot counting marks a new
+# deployment as good only when this succeeds. It checks the essential units
+# listed in /usr/lib/renner-os/essential.units (one per line) rather than
+# "no unit failed at all", so an optional unit that fails does not make a
+# working deployment fall back. Units that are disabled, masked or missing
+# are skipped (for example sddm.service on a system without a desktop).
+set -uo pipefail
+
+list=/usr/lib/renner-os/essential.units
+deadline=$((SECONDS + 90))  # services such as the display manager start late
+failed=()
+
+while read -r unit; do
+    [[ -z $unit || $unit == \#* ]] && continue
+    state=$(systemctl is-enabled "$unit" 2>/dev/null) || true
+    case $state in
+        disabled | masked | masked-runtime | not-found | "") continue ;;
+    esac
+    until systemctl is-active -q "$unit"; do
+        if systemctl is-failed -q "$unit" || ((SECONDS >= deadline)); then
+            failed+=("$unit")
+            break
+        fi
+        sleep 2
+    done
+done <"$list"
+
+if ((${#failed[@]})); then
+    echo "renner-boot-health: essential units not active: ${failed[*]}" >&2
+    exit 1
+fi
+echo "renner-boot-health: all essential units are active"

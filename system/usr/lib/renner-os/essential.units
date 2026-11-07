@@ -1,0 +1,8 @@
+# Units that must be active before a new deployment counts as good
+# (see /usr/lib/renner-os/boot-health). Disabled or missing units are skipped.
+renner-activate-accounts.service
+renner-activate-var.service
+systemd-journald.service
+dbus.service
+NetworkManager.service
+sddm.service

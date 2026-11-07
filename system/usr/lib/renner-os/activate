@@ -1,0 +1,85 @@
+#!/usr/bin/env bash
+# renner.dev OS: activate a deployment (renner-activate-accounts.service and
+# renner-activate-var.service).
+#
+# renner-update stages everything inside the new deployment and never touches
+# the live system. At boot this script applies, additively:
+#   activate accounts  (before systemd-sysusers; needs only /etc, which the
+#                       initramfs mounts): system groups and users that the
+#                       deployment's own /etc (the lower layer of the /etc
+#                       overlay) has but the live /etc lacks, with exactly the
+#                       IDs allocated during staging. Idempotent, every boot.
+#   activate var       (after local-fs.target, before systemd-tmpfiles-setup):
+#                       files that packages ship under /var, copied into the
+#                       shared /var without overwriting anything. Once per
+#                       deployment (stamp in /var/lib/renner-os/activated).
+# Nothing is removed or changed, so a rollback stays safe. A conflict (an ID
+# taken by a different name) fails the unit, and renner-boot-health then
+# withholds the boot-counting "good" mark, so the deployment falls back.
+set -Eeuo pipefail
+
+mode=${1:-}
+id=$(grep -o 'subvol=/\?@deployments/[0-9]*' /proc/cmdline | grep -o '[0-9]*$' || true)
+[[ -n $id ]] || { echo "renner-activate: not a renner.dev OS deployment"; exit 0; }
+
+# A non-recursive bind of / shows what the overlays and mounts hide: the
+# deployment's own /etc and /var directories.
+view=/run/renner/deployment-$mode
+mkdir -p "$view"
+mountpoint -q "$view" || mount --bind -o ro / "$view"
+trap 'umount "$view" 2>/dev/null || true; rmdir "$view" 2>/dev/null || true' EXIT
+
+activate_accounts() {
+    local conflicts=0 name gid uid gecos home shell args
+    while IFS=: read -r name _ gid _; do
+        [[ -n $name ]] || continue
+        getent group "$name" >/dev/null && continue
+        if getent group "$gid" >/dev/null; then
+            echo "renner-activate: group $name needs GID $gid, which is taken" >&2
+            conflicts=1
+            continue
+        fi
+        groupadd --system --gid "$gid" "$name"
+        echo "renner-activate: added group $name ($gid)"
+    done <"$view/etc/group"
+
+    while IFS=: read -r name _ uid gid gecos home shell; do
+        [[ -n $name ]] || continue
+        getent passwd "$name" >/dev/null && continue
+        if getent passwd "$uid" >/dev/null; then
+            echo "renner-activate: user $name needs UID $uid, which is taken" >&2
+            conflicts=1
+            continue
+        fi
+        args=(--system --no-create-home --uid "$uid" --gid "$gid")
+        [[ -n $home ]] && args+=(--home-dir "$home")
+        [[ -n $shell ]] && args+=(--shell "$shell")
+        [[ -n $gecos ]] && args+=(--comment "$gecos")
+        useradd "${args[@]}" "$name"
+        echo "renner-activate: added user $name ($uid)"
+    done <"$view/etc/passwd"
+
+    # The overlay may hold only some account files in its upper layer (for
+    # example /etc/shadow after a password change while /etc/passwd still comes
+    # from the deployment). pwconv/grpconv add the missing shadow entries for
+    # users and groups that exist; they change nothing else.
+    pwconv
+    grpconv
+    return "$conflicts"
+}
+
+activate_var() {
+    local stamp_dir=/var/lib/renner-os/activated
+    [[ -e $stamp_dir/$id ]] && return 0
+    # Package payload under /var: add what is missing, never overwrite.
+    cp -a --update=none "$view/var/." /var/
+    mkdir -p "$stamp_dir"
+    touch "$stamp_dir/$id"
+    echo "renner-activate: /var payload of deployment $id applied"
+}
+
+case $mode in
+    accounts) activate_accounts ;;
+    var) activate_var ;;
+    *) echo "usage: activate accounts|var" >&2; exit 2 ;;
+esac

@@ -23,7 +23,7 @@ set -Eeuo pipefail
 SOURCE=${RENNER_SOURCE:-https://raw.githubusercontent.com/rennerdo30/renner-os/main}
 DISK="" HOSTNAME_="" USERNAME="" PASSWORD="" TIMEZONE=UTC LOCALE=en_US.UTF-8 KEYMAP=us
 SERIAL=0 ASSUME_YES=0
-LOG=/tmp/renner-install.log TEE_PID=""
+LOG=/tmp/renner-install.log
 TARGET=/mnt
 STAGING=/tmp/renner-install
 
@@ -32,6 +32,12 @@ SYSTEM_FILES=(
     usr/lib/renner-os/initrd-etc-overlay
     usr/lib/systemd/system/renner-etc-overlay.service
     usr/lib/initcpio/install/renner-etc-overlay
+    usr/lib/renner-os/activate
+    usr/lib/renner-os/boot-health
+    usr/lib/renner-os/essential.units
+    usr/lib/systemd/system/renner-activate-accounts.service
+    usr/lib/systemd/system/renner-activate-var.service
+    usr/lib/systemd/system/renner-boot-health.service
 )
 
 PACKAGES=(
@@ -41,7 +47,7 @@ PACKAGES=(
 )
 
 say() { printf '\n\033[1m==> %s\033[0m\n' "$*"; }
-die() { printf '\n\033[31mrenner-install: %s\033[0m\nLog: %s\n' "$*" "$LOG" >&2; flush_log; exit 1; }
+die() { printf '\n\033[31mrenner-install: %s\033[0m\nLog: %s\n' "$*" "$LOG" >&2; exit 1; }
 ask() {  # ask VAR "prompt" [default] -- reads from the terminal, also under curl | bash
     local reply
     read -r -p "$2${3:+ [$3]}: " reply </dev/tty
@@ -72,6 +78,12 @@ check_environment() {
     [[ $EUID -eq 0 ]] || die "run as root (the Arch ISO logs you in as root)"
     [[ -d /sys/firmware/efi/efivars ]] || die "UEFI boot required; this machine booted in BIOS mode"
     [[ -d /run/archiso ]] || die "run this from the official Arch Linux ISO"
+    # The ISO fills its package keyring at boot (pacman-init.service). Starting
+    # pacstrap before that finishes fails the signature checks, so wait for it;
+    # `systemctl start` returns once the oneshot has finished.
+    if systemctl cat pacman-init.service >/dev/null 2>&1; then
+        systemctl start pacman-init.service || die "the ISO's package keyring could not be set up"
+    fi
     curl -fsS --max-time 15 -o /dev/null "$SOURCE/install/install.sh" \
         || die "cannot reach $SOURCE (network?)"
 }
@@ -178,7 +190,10 @@ install_system_files() {
     local f mode
     for f in "${SYSTEM_FILES[@]}"; do
         mode=644
-        [[ $f == usr/bin/* || $f == usr/lib/renner-os/* ]] && mode=755
+        case $f in
+            usr/bin/* | usr/lib/renner-os/activate | usr/lib/renner-os/boot-health \
+                | usr/lib/renner-os/initrd-etc-overlay) mode=755 ;;
+        esac
         install -Dm"$mode" "$STAGING/$f" "$TARGET/$f"
     done
 }
@@ -216,10 +231,12 @@ EOF
     echo '%wheel ALL=(ALL:ALL) ALL' >"$TARGET/etc/sudoers.d/10-wheel"
     chmod 440 "$TARGET/etc/sudoers.d/10-wheel"
 
-    # systemd-boot-check-no-failures: a new deployment is only marked good
-    # (boot counting) when no unit failed, not merely when sysinit was reached.
+    # renner-boot-health: a new deployment is marked good (boot counting) only
+    # when its essential units run. renner-activate-* add system accounts and
+    # package files in /var that a new deployment brings (see activate).
     arch-chroot "$TARGET" systemctl enable NetworkManager.service systemd-timesyncd.service \
-        systemd-boot-update.service systemd-boot-check-no-failures.service >/dev/null
+        systemd-boot-update.service renner-activate-accounts.service renner-activate-var.service \
+        renner-boot-health.service >/dev/null
 }
 
 setup_boot() {
@@ -254,28 +271,17 @@ EOF
     cp "$TARGET/boot/renner.efi" "$TARGET/efi/EFI/Linux/renner-$DEPLOYMENT.efi"
 }
 
-finish() {
+complete_deployment() {
     say "Finishing"
-    cp "$LOG" "$TARGET/var/log/renner-install.log"
+    # Same completion contract as renner-update: marker, then read-only last.
+    install -Dm644 /dev/null "$TARGET/usr/lib/renner-os/deployment-complete"
+    install -d "$TARGET/var/lib/renner-os/activated"
+    touch "$TARGET/var/lib/renner-os/activated/$DEPLOYMENT"  # nothing to activate
     sync
     btrfs property set -ts "$TARGET" ro true
-    umount -R "$TARGET"
-    say "renner.dev OS is installed. Remove the install medium and reboot."
-    flush_log
 }
 
-flush_log() {  # wait until tee has written everything (it runs asynchronously)
-    [[ -n $TEE_PID ]] || return 0
-    exec 1>&- 2>&-
-    wait "$TEE_PID" 2>/dev/null || true
-}
-
-main() {
-    parse_args "$@"
-    # Open the log before anything else; without it nothing destructive runs.
-    : >>"$LOG" || { echo "renner-install: cannot write $LOG" >&2; exit 1; }
-    exec > >(tee -a "$LOG") 2>&1
-    TEE_PID=$!
+run_stages() {  # everything that changes the disk; leaves the target mounted
     trap 'die "failed at line $LINENO"' ERR
     check_environment
     collect_settings
@@ -286,7 +292,28 @@ main() {
     install_system_files
     configure_system
     setup_boot
-    finish
+    complete_deployment
+}
+
+main() {
+    parse_args "$@"
+    # Open the log before anything else; without it nothing destructive runs.
+    : >"$LOG" || { echo "renner-install: cannot write $LOG" >&2; exit 1; }
+    # A real pipeline, so both exit codes are known and every line is in the
+    # log before it is copied onto the new system.
+    set +e
+    run_stages 2>&1 | tee -a "$LOG"
+    local status=("${PIPESTATUS[@]}")
+    set -e
+    if ((status[0] != 0)); then
+        umount -R "$TARGET" 2>/dev/null
+        exit "${status[0]}"
+    fi
+    ((status[1] == 0)) || echo "renner-install: warning: writing $LOG failed; the log is incomplete" >&2
+    cp "$LOG" "$TARGET/var/log/renner-install.log"
+    sync
+    umount -R "$TARGET"
+    say "renner.dev OS is installed. Remove the install medium and reboot."
 }
 
 main "$@"

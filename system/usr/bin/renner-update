@@ -7,6 +7,8 @@
 #   3. rebuilds its unified kernel image (UKI) and marks it read-only,
 #   4. adds it to the boot menu with boot counting (3 tries), so a version
 #      that never boots cleanly falls back to the previous one by itself.
+# Accounts and /var files that packages add are applied by
+# renner-activate.service on the first boot of the new deployment.
 #
 #   renner-update                  full system upgrade (pacman -Syu)
 #   renner-update install PKG...   add packages
@@ -20,14 +22,16 @@ readonly ESP=/efi
 readonly WORK=/run/renner-update
 readonly TOP=$WORK/top     # btrfs top level (subvolid 5)
 readonly ROOT=$WORK/root   # bind mount of the new deployment for the chroot
-readonly VARTMP=$WORK/var  # throwaway upper layer for the chroot's /var
+readonly MARKER=usr/lib/renner-os/deployment-complete
 
-# Live /etc files that shape the kernel image. The chroot sees the new
-# deployment's own /etc (no overlay), so the effective versions are copied in.
-readonly BOOT_CONFIG=(kernel/cmdline mkinitcpio.conf mkinitcpio.conf.d mkinitcpio.d
-                      modprobe.d modules-load.d vconsole.conf)
-# Account databases: packages that add system users must see the live ones.
-readonly ACCOUNTS=(passwd group shadow gshadow subuid subgid)
+# Live /etc paths mirrored into the new deployment before pacman runs, so the
+# chroot (which sees the deployment's own /etc, without the overlay) builds
+# with the effective configuration. Mirrored exactly: a path deleted in the
+# live /etc is deleted in the new deployment too.
+readonly MIRROR=(pacman.conf pacman.d sysusers.d
+                 kernel/cmdline mkinitcpio.conf mkinitcpio.conf.d mkinitcpio.d
+                 modprobe.d modules-load.d vconsole.conf
+                 passwd group shadow gshadow subuid subgid)
 
 die() { echo "renner-update: $*" >&2; exit 1; }
 say() { echo "==> $*"; }
@@ -40,7 +44,10 @@ deployments() {  # all numeric deployments, oldest first
     find "$TOP/@deployments" -mindepth 1 -maxdepth 1 -printf '%f\n' | grep -E '^[0-9]+$' | sort -n
 }
 
-is_finished() { [[ $(btrfs property get -ts "$TOP/@deployments/$1" ro) == ro=true ]]; }
+is_finished() {  # completion marker and read-only (set as the very last step)
+    local d=$TOP/@deployments/$1
+    [[ -e $d/$MARKER && $(btrfs property get -ts "$d" ro) == ro=true ]]
+}
 
 mount_top() {
     mkdir -p "$TOP"
@@ -54,7 +61,8 @@ status() {
     while read -r id; do
         mark=""
         [[ $id == "$booted" ]] && mark=" (booted)"
-        is_finished "$id" || mark+=" (unfinished, removed by the next update)"
+        # The installer's first deployment has no marker but is booted or read-only.
+        is_finished "$id" || [[ $id == "$booted" ]] || mark+=" (unfinished, removed by the next update)"
         echo "    $id$mark"
     done < <(deployments)
     say "Boot entries:"
@@ -72,9 +80,9 @@ prune() {
     local id
     local -a finished=()
     while read -r id; do
-        if is_finished "$id"; then
+        if is_finished "$id" || [[ $id == "$booted" ]]; then
             finished+=("$id")
-        elif [[ $id != "$booted" && $id != "$new" ]]; then
+        elif [[ $id != "$new" ]]; then
             say "Removing unfinished deployment $id (left by a failed update)"
             delete_deployment "$id"
         fi
@@ -101,10 +109,9 @@ next_id() {
 
 unmount_chroot() {
     local m
-    for m in "$ROOT/var/log" "$ROOT/var/cache/pacman/pkg" "$ROOT/var" "$ROOT"; do
+    for m in "$ROOT/var/log" "$ROOT/var/cache/pacman/pkg" "$ROOT"; do
         if mountpoint -q "$m"; then umount "$m" || return 1; fi
     done
-    rm -rf "$VARTMP"
 }
 
 new="" dst="" finished=0
@@ -116,29 +123,25 @@ cleanup() {  # EXIT trap while a transaction runs: never leave a half deployment
     fi
     if [[ $finished != 1 && -d $dst ]]; then
         echo "renner-update: transaction failed; removing deployment $new" >&2
+        rm -f "$ESP/EFI/Linux/renner-$new"[+.]*
         if ! btrfs subvolume delete "$dst" >/dev/null; then
             echo "renner-update: could not delete $dst; the next update removes it" >&2
         fi
-        rm -f "$ESP/EFI/Linux/renner-$new"[+.]*
     fi
 }
 
-copy_live_etc() {  # copy_live_etc PATH... : live /etc (with the overlay) -> new deployment
+mirror_live_etc() {  # exact copy of the effective /etc paths, including absence
     local p
-    for p in "$@"; do
+    for p in "${MIRROR[@]}"; do
+        rm -rf "${dst:?}/etc/$p"
         [[ -e /etc/$p ]] || continue
-        if [[ -d /etc/$p ]]; then
-            mkdir -p "$dst/etc/$p"
-            cp -a "/etc/$p/." "$dst/etc/$p/"
-        else
-            mkdir -p "$(dirname "$dst/etc/$p")"
-            cp -a "/etc/$p" "$dst/etc/$p"
-        fi
+        mkdir -p "$(dirname "$dst/etc/$p")"
+        cp -a "/etc/$p" "$dst/etc/$p"
     done
 }
 
 transaction() {
-    if mountpoint -q "$ROOT" || mountpoint -q "$ROOT/var"; then
+    if mountpoint -q "$ROOT"; then
         die "a failed update left mounts in $ROOT; reboot first"
     fi
     new=$(next_id)
@@ -148,20 +151,23 @@ transaction() {
     say "New deployment $new from $booted"
     btrfs subvolume snapshot "$TOP/@deployments/$booted" "$dst" >/dev/null
     trap cleanup EXIT
+    rm -f "$dst/$MARKER"
 
-    copy_live_etc pacman.conf pacman.d sysusers.d "${BOOT_CONFIG[@]}" "${ACCOUNTS[@]}"
+    mirror_live_etc
+    [[ -e $dst/etc/kernel/cmdline ]] || die "/etc/kernel/cmdline is missing"
     sed -E -i "s#subvol=/?@deployments/[0-9]+#subvol=/@deployments/$new#" "$dst/etc/kernel/cmdline"
     [[ $(grep -o 'subvol=/@deployments/[0-9]*' "$dst/etc/kernel/cmdline") == "subvol=/@deployments/$new" ]] \
         || die "could not point the kernel command line at deployment $new"
 
-    # The chroot root must be a mount point: pacman finds free space through
-    # the mount table. /var is the live, shared /var seen through an overlay
-    # with a throwaway upper layer, so package scripts cannot change live state
-    # (systemd-tmpfiles recreates what packages declare at the next boot). Only
-    # the package cache and logs are written for real.
-    mkdir -p "$ROOT" "$VARTMP/upper" "$VARTMP/work"
+    # The chroot sees the deployment's own /var, not the live one: files that
+    # packages ship under /var and anything their scripts write stay inside
+    # the new deployment (renner-activate copies new files into the shared /var
+    # on its first boot). Only the package cache and the logs are shared.
+    # The chroot root must be a mount point, because pacman finds free space
+    # through the mount table.
+    mkdir -p "$ROOT" "$dst/var/lib" "$dst/var/cache/pacman/pkg" "$dst/var/log" "$dst/var/tmp"
+    ln -sfn ../../usr/lib/sysimage/pacman "$dst/var/lib/pacman"
     mount --bind "$dst" "$ROOT"
-    mount -t overlay overlay -o "lowerdir=/var,upperdir=$VARTMP/upper,workdir=$VARTMP/work" "$ROOT/var"
     mount --bind /var/cache/pacman/pkg "$ROOT/var/cache/pacman/pkg"
     mount --bind /var/log "$ROOT/var/log"
 
@@ -171,19 +177,11 @@ transaction() {
     unmount_chroot || die "could not unmount $ROOT"
     [[ -s $dst/boot/renner.efi ]] || die "no kernel image was built"
 
-    btrfs property set -ts "$dst" ro true
     cp "$dst/boot/renner.efi" "$ESP/EFI/Linux/renner-$new+$TRIES.efi"
+    touch "$dst/$MARKER"
+    btrfs property set -ts "$dst" ro true   # last step: from here on it is complete
     finished=1
     trap - EXIT
-
-    # System accounts that packages added get the same IDs in the running
-    # system now, so files owned by them in /var match after the reboot.
-    local f
-    for f in "${ACCOUNTS[@]}"; do
-        if [[ -e $dst/etc/$f ]] && ! cmp -s "$dst/etc/$f" "/etc/$f"; then
-            cp -p "$dst/etc/$f" "/etc/$f"
-        fi
-    done
 
     prune
     say "Done. Deployment $new boots next; the previous one stays in the boot menu."
@@ -201,6 +199,6 @@ case ${1:-upgrade} in
     upgrade) mount_top; transaction -Syu --noconfirm ;;
     install) shift; (($#)) || die "install: no packages given"; mount_top; transaction -Syu --noconfirm --needed "$@" ;;
     remove) shift; (($#)) || die "remove: no packages given"; mount_top; transaction -Rns --noconfirm "$@" ;;
-    -h | --help) sed -n '2,14p' "$0" | sed 's/^# \{0,1\}//' ;;
+    -h | --help) sed -n '2,16p' "$0" | sed 's/^# \{0,1\}//' ;;
     *) die "unknown command '$1' (try --help)" ;;
 esac

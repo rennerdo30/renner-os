@@ -75,18 +75,43 @@ The closest match with plain Arch packages:
   updates; every other file comes from the booted deployment. It is mounted
   with `index=off`, because the lower layer changes with every update
   (overlayfs otherwise refuses: "failed to verify upper root origin").
-  `renner.etc=off` on the kernel command line boots with a read-only `/etc`.
-- **`renner-update`:** snapshot of the booted deployment, `pacman` in a chroot of
-  the snapshot (live `pacman.conf` and mirrors are copied in), a new UKI, the
-  snapshot set read-only, and a boot entry with 3 tries (`renner-<id>+3.efi`).
-  A failed transaction deletes its snapshot. It keeps 3 deployments plus the
-  booted one.
-- **Rollback:** pick an older entry in the boot menu. A new deployment that
-  never boots cleanly 3 times in a row falls back automatically (systemd-boot
-  boot counting; `systemd-bless-boot` marks a good boot).
-- Known limit: if a package update adds a system user while the user's
-  `/etc/passwd` is in the upper layer, `systemd-sysusers` adds the user on the
-  next boot (it runs when `/usr` is newer than `/etc`).
+  The overlay is required: if it cannot be mounted, boot stops in the
+  emergency shell rather than running with the deployment's default `/etc`.
+  `renner.etc=off` on the kernel command line is the deliberate repair bypass
+  (read-only `/etc`).
+- **`renner-update`** never changes the running system:
+  1. snapshot of the booted deployment, with a monotonic ID (UTC, always above
+     the newest existing ID);
+  2. the effective configuration is mirrored from the live `/etc` into it,
+     deletions included: pacman config, the boot configuration (kernel command
+     line, mkinitcpio, modprobe, modules-load, vconsole) and the account
+     databases;
+  3. `pacman` in a chroot of the snapshot with the snapshot's **own** `/var`
+     (only the package cache and the logs are shared), then a new UKI;
+  4. the UKI goes to the ESP with 3 tries (`renner-<id>+3.efi`), a completion
+     marker is written, and setting the snapshot read-only is the last step.
+  A failed transaction deletes its snapshot and boot entry; anything left
+  unfinished is removed by the next update. It keeps 3 finished deployments
+  plus the booted one.
+- **Activation** only adds, so rollback stays safe:
+  - `renner-activate-accounts.service` (every boot, before `systemd-sysusers`;
+    needs only `/etc`, which the initramfs mounts): system groups and users that
+    the deployment's own `/etc` has but the live `/etc` lacks are added with the
+    exact IDs from staging; `pwconv`/`grpconv` fill in missing shadow entries
+    when only some account files are in the overlay's upper layer. An ID taken
+    by another name fails the unit.
+  - `renner-activate-var.service` (first boot of each deployment, after
+    `local-fs.target`, before `systemd-tmpfiles-setup`): files that packages
+    ship under `/var` are copied into the shared `/var` without overwriting.
+  - Ordering matters: `systemd-sysusers` runs before `local-fs.target`, so one
+    unit ordered after `local-fs.target` and before `sysusers` is a cycle (a lab
+    boot hung on it); hence two units.
+- **Boot health and rollback:** pick an older entry in the boot menu at any
+  time. A new deployment is marked good only when `renner-boot-health` finds
+  the essential units active (`/usr/lib/renner-os/essential.units`: activation,
+  journald, dbus, NetworkManager, SDDM when enabled); an unrelated optional unit
+  failing does not count. Without that mark after 3 tries, systemd-boot falls
+  back to the previous deployment by itself.
 - **Software for users:** Flatpak through Discover for apps; Distrobox (an Arch
   container) for AUR and CLI tools; Windows software in Wine prefixes in
   `/home`. Host `pacman` runs only through `renner-update`.
