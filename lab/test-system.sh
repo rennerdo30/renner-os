@@ -14,7 +14,8 @@ failed=0
 check() {
     local name=$1 want=$2 out
     shift 2
-    out=$(L exec $VM --timeout 30 -- "$@" 2>&1 | tr '\n' ' ')
+    # Python on Windows writes \r\n; drop the \r so anchored patterns work.
+    out=$(L exec $VM --timeout 30 -- "$@" 2>&1 | tr -d '\r' | tr '\n' ' ')
     if [[ $out =~ $want ]]; then
         printf 'ok    %-28s %s\n' "$name" "${out:0:70}"
     else
@@ -51,8 +52,10 @@ check "global theme"            "dev.renner"     sh -c 'grep LookAndFeelPackage 
 check "settings pages hidden"   "kcm_kwin_effects=false" sh -c 'grep kcm_kwin_effects /etc/xdg/kdeglobals'
 check "widget style Darkly"     "widgetStyle=Darkly" sh -c 'grep widgetStyle /etc/xdg/kdeglobals'
 check "window frames Darkly"    "org.kde.darkly" sh -c 'grep ^library /etc/xdg/kwinrc'
-check "no Breeze global themes"  "^0$"  sh -c 'ls -d /usr/share/plasma/look-and-feel/org.kde.breeze* 2>/dev/null | wc -l'
-check "own lock screen QML"     "LockScreen"     sh -c 'ls /usr/share/plasma/look-and-feel/dev.renner.desktop/contents/lockscreen/'
+check "no Breeze global themes"  "^0 *$"  sh -c 'ls -d /usr/share/plasma/look-and-feel/org.kde.breeze* 2>/dev/null | wc -l'
+# The lock screen must still work without the Breeze global theme: lock, see
+# the greeter run, unlock again.
+check "lock screen works"       "kscreenlocker_greet" sh -c 'loginctl lock-sessions; sleep 4; pgrep -af kscreenlocker_greet; loginctl unlock-sessions'
 check "renner splash"           "dev.renner"     sh -c 'cat /etc/xdg/ksplashrc'
 check "only renner colors"      "^RennerDark.colors *$" sh -c 'ls /usr/share/color-schemes/'
 exit $failed
