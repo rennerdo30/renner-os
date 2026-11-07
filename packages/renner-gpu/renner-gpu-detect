@@ -1,0 +1,179 @@
+#!/usr/bin/env python3
+"""renner-gpu-detect: classify the display GPUs and pick the driver profile.
+
+Reads PCI display devices from sysfs and the NVIDIA support lists that ship
+with each driver branch, then prints the profile the installer and the boot
+check use:
+
+  RENNER_GPU_VARIANT        image variant: standard | nvidia-legacy
+  RENNER_GPU_NVIDIA_DRIVER  open | legacy-580 | nouveau | none
+  RENNER_GPU_MULTI          1 when more than one GPU is present (PRIME / switcheroo)
+
+The NVIDIA lists are the drivers' own supported-gpus.json files, copied into
+the image at build time. A GPU listed with the "kernelopen" feature runs on
+nvidia-open; one listed only in the 580 legacy branch needs the
+nvidia-legacy variant; anything else falls back to nouveau/NVK.
+
+Exit codes: 0 ok, 1 variant mismatch (--check-variant), 2 usage error,
+3 an NVIDIA GPU is present but no support list could be read.
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import sys
+from dataclasses import dataclass
+from pathlib import Path
+
+DEFAULT_SYSFS = "/sys/bus/pci/devices"
+DEFAULT_OPEN_LIST = "/usr/share/renner-os/nvidia/supported-gpus-open.json"
+DEFAULT_LEGACY_LIST = "/usr/share/renner-os/nvidia/supported-gpus-580.json"
+DEFAULT_VARIANT_FILE = "/usr/lib/renner-os/variant"
+
+VENDORS = {0x1002: "amd", 0x8086: "intel", 0x10DE: "nvidia"}
+PCI_CLASS_DISPLAY = 0x03
+
+
+@dataclass
+class Gpu:
+    address: str
+    vendor_id: int
+    device_id: int
+    boot_vga: bool
+    vendor: str
+    driver: str = ""
+
+    def describe(self) -> str:
+        return (
+            f"{self.address} {self.vendor} {self.vendor_id:04x}:{self.device_id:04x} "
+            f"driver={self.driver} boot_vga={int(self.boot_vga)}"
+        )
+
+
+def _read_hex(path: Path) -> int:
+    return int(path.read_text().strip(), 16)
+
+
+def scan_gpus(sysfs: Path) -> list[Gpu]:
+    gpus = []
+    for dev in sorted(sysfs.iterdir()) if sysfs.is_dir() else []:
+        try:
+            pci_class = _read_hex(dev / "class")
+            if pci_class >> 16 != PCI_CLASS_DISPLAY:
+                continue
+            vendor_id = _read_hex(dev / "vendor")
+            device_id = _read_hex(dev / "device")
+        except (OSError, ValueError):
+            continue
+        boot_vga_file = dev / "boot_vga"
+        try:
+            boot_vga = boot_vga_file.read_text().strip() == "1"
+        except OSError:
+            boot_vga = False
+        gpus.append(
+            Gpu(dev.name, vendor_id, device_id, boot_vga, VENDORS.get(vendor_id, "other"))
+        )
+    return gpus
+
+
+def load_nvidia_list(path: Path) -> dict[int, set[str]] | None:
+    """Map device id -> feature set from an NVIDIA supported-gpus.json."""
+    try:
+        data = json.loads(path.read_text())
+    except (OSError, ValueError):
+        return None
+    chips: dict[int, set[str]] = {}
+    for chip in data.get("chips", []):
+        try:
+            devid = int(str(chip["devid"]), 16)
+        except (KeyError, ValueError):
+            continue
+        chips.setdefault(devid, set()).update(chip.get("features", []))
+    return chips
+
+
+def classify(gpus: list[Gpu], open_list, legacy_list) -> dict[str, str]:
+    for gpu in gpus:
+        if gpu.vendor != "nvidia":
+            gpu.driver = "mesa" if gpu.vendor in ("amd", "intel") else "unknown"
+        elif open_list is not None and "kernelopen" in open_list.get(gpu.device_id, ()):
+            gpu.driver = "open"
+        elif legacy_list is not None and gpu.device_id in legacy_list:
+            gpu.driver = "legacy-580"
+        else:
+            gpu.driver = "nouveau"
+
+    nvidia = [g.driver for g in gpus if g.vendor == "nvidia"]
+    # The 580 branch also drives every newer GPU, so one legacy card makes the
+    # whole machine use the legacy variant.
+    if "legacy-580" in nvidia:
+        nvidia_driver = "legacy-580"
+    elif "open" in nvidia:
+        nvidia_driver = "open"
+    elif nvidia:
+        nvidia_driver = "nouveau"
+    else:
+        nvidia_driver = "none"
+
+    return {
+        "RENNER_GPU_COUNT": str(len(gpus)),
+        "RENNER_GPU_VENDORS": ",".join(sorted({g.vendor for g in gpus})),
+        "RENNER_GPU_VARIANT": "nvidia-legacy" if nvidia_driver == "legacy-580" else "standard",
+        "RENNER_GPU_NVIDIA_DRIVER": nvidia_driver,
+        "RENNER_GPU_MULTI": "1" if len(gpus) > 1 else "0",
+    }
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    parser.add_argument("--sysfs", default=DEFAULT_SYSFS, type=Path)
+    parser.add_argument("--nvidia-open-list", default=DEFAULT_OPEN_LIST, type=Path)
+    parser.add_argument("--nvidia-legacy-list", default=DEFAULT_LEGACY_LIST, type=Path)
+    parser.add_argument("--format", choices=("env", "json"), default="env")
+    parser.add_argument(
+        "--check-variant",
+        nargs="?",
+        const=DEFAULT_VARIANT_FILE,
+        metavar="FILE",
+        help="compare with the installed image variant; exit 1 on mismatch",
+    )
+    args = parser.parse_args(argv)
+
+    gpus = scan_gpus(args.sysfs)
+    open_list = load_nvidia_list(args.nvidia_open_list)
+    legacy_list = load_nvidia_list(args.nvidia_legacy_list)
+    profile = classify(gpus, open_list, legacy_list)
+
+    if args.format == "json":
+        out = dict(profile, gpus=[g.__dict__ for g in gpus])
+        print(json.dumps(out, indent=2))
+    else:
+        for key, value in profile.items():
+            print(f"{key}={value}")
+        for i, gpu in enumerate(gpus):
+            print(f'RENNER_GPU_{i}="{gpu.describe()}"')
+
+    if any(g.vendor == "nvidia" for g in gpus) and open_list is None and legacy_list is None:
+        print("renner-gpu-detect: no NVIDIA support list readable", file=sys.stderr)
+        return 3
+
+    if args.check_variant:
+        try:
+            installed = Path(args.check_variant).read_text().strip()
+        except OSError as err:
+            print(f"renner-gpu-detect: cannot read variant: {err}", file=sys.stderr)
+            return 2
+        if installed != profile["RENNER_GPU_VARIANT"]:
+            print(
+                f"renner-gpu-detect: installed variant '{installed}' does not match "
+                f"this hardware ('{profile['RENNER_GPU_VARIANT']}'); "
+                f"run: renner-os variant {profile['RENNER_GPU_VARIANT']}",
+                file=sys.stderr,
+            )
+            return 1
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
