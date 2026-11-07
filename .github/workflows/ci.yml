@@ -11,18 +11,27 @@ permissions:
 jobs:
   test:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v7
       - name: Compile check
-        run: python3 -m py_compile system/usr/bin/renner-gpu-detect lab/lab.py lab/pkgcache.py
-      - name: Shell syntax
+        run: python3 -m py_compile system/usr/bin/renner-gpu-detect lab/*.py theme/*.py
+      - name: Shell syntax (every script with a shell shebang)
         run: |
-          for f in packages/renner-exe/renner-exe install/install.sh \
-                   system/usr/bin/renner-update system/usr/lib/initcpio/install/renner-etc-overlay \
-                   system/usr/lib/renner-os/activate system/usr/lib/renner-os/boot-health; do
-            bash -n "$f"
-          done
-          sh -n system/usr/lib/renner-os/initrd-etc-overlay
-      - name: Unit tests
+          set -e
+          n=0
+          while IFS= read -r f; do
+            case $(head -n1 "$f") in
+              '#!/usr/bin/env bash'* | '#!/bin/bash'*) bash -n "$f" ;;
+              '#!/bin/sh'*) sh -n "$f" ;;
+              *) continue ;;
+            esac
+            n=$((n + 1))
+          done < <(git ls-files install iso lab packages system theme | grep -v '\.\(py\|qml\|js\|json\|svg\|png\|conf\|rules\|desktop\|toml\|service\|hook\|colors\)$')
+          echo "$n shell scripts checked"
+      - name: system/MANIFEST up to date
+        run: python3 theme/manifest.py --check
+      - name: Unit tests (Python)
         run: python3 -m unittest discover -s tests -v
+      - name: Unit tests (installer core)
+        run: cargo test --manifest-path installer/Cargo.toml -p installer-core
