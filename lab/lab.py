@@ -225,8 +225,6 @@ def cmd_up(a) -> None:
         "-name", f"renneros-{a.name}",
         "-machine", "q35", "-accel", "whpx", "-cpu", "host",
         "-smp", str(a.cpus), "-m", a.mem,
-        "-drive", f"if=pflash,format=raw,readonly=on,file={QEMU_DIR / 'share/edk2-x86_64-code.fd'}",
-        "-drive", f"if=pflash,format=qcow2,file={d / 'efivars.qcow2'}",
         "-drive", f"if=none,id=hd0,format=qcow2,file={d / 'disk.qcow2'}",
         "-device", "virtio-blk-pci,drive=hd0,bootindex=1",
         "-device", "virtio-vga",
@@ -241,6 +239,9 @@ def cmd_up(a) -> None:
         "-vnc", f"127.0.0.1:{state['vnc_display']}",
         "-display", "sdl" if a.window else "none",
     ]
+    if not a.bios:  # UEFI (OVMF); without these drives QEMU boots SeaBIOS
+        args += ["-drive", f"if=pflash,format=raw,readonly=on,file={QEMU_DIR / 'share/edk2-x86_64-code.fd'}",
+                 "-drive", f"if=pflash,format=qcow2,file={d / 'efivars.qcow2'}"]
     if a.iso:
         # bootindex, not -boot once=d: OVMF follows QEMU's boot order, but keeps
         # booting an installed disk first when only -boot is given.
@@ -550,6 +551,7 @@ def main() -> None:
     s.add_argument("--window", action="store_true", help="visible window; only when the owner asks")
     s.add_argument("--no-cache", action="store_true", help="don't start the package cache")
     s.add_argument("--no-enter", action="store_true", help="don't press Enter at the boot menu")
+    s.add_argument("--bios", action="store_true", help="legacy BIOS (SeaBIOS) instead of UEFI")
     s.set_defaults(f=cmd_up)
     s = sub.add_parser("down"); s.add_argument("name"); s.set_defaults(f=cmd_down)
     s = sub.add_parser("status"); s.set_defaults(f=cmd_status)
