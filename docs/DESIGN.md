@@ -165,7 +165,7 @@ offers the fix; it never switches drivers silently.
 | AMD | mesa (radeonsi, RADV), lib32 |
 | Intel | mesa (iris, ANV), intel-media-driver, lib32 |
 | NVIDIA Turing+ (RTX 20xx, GTX 16xx and newer) | `nvidia-open` + `nvidia-utils`, lib32 |
-| NVIDIA Maxwell/Pascal/Volta | `nvidia-580xx` (legacy branch, AUR; prebuilt in our repo) |
+| NVIDIA Maxwell/Pascal/Volta | `nvidia-580xx` (legacy branch, AUR; prebuilt in our repo, not available yet: nouveau until then) |
 | NVIDIA Kepler and older | nouveau / NVK (mesa) |
 | Hybrid (iGPU + NVIDIA dGPU) | above + `switcheroo-control`, PRIME offload |
 
@@ -174,9 +174,23 @@ the 590 driver dropped Pascal and older. `nvidia-open` and `nvidia-580xx` both s
 `nvidia.ko`, so a machine gets one or the other. One legacy card moves the whole
 machine to the 580 branch, because it also drives newer GPUs.
 
-`renner-gpu-detect` (draft in `packages/renner-gpu`, with tests) reads PCI display
-devices from sysfs and NVIDIA's own support lists, and prints the profile the
-installer acts on.
+`renner-gpu-detect` (`system/usr/bin`, with tests) reads PCI display devices from
+sysfs and prints the profile and the driver packages the installer installs. The
+NVIDIA generation comes from the PCI device ID ranges NVIDIA assigns per
+generation (Turing starts at `0x1E00`, Maxwell at `0x1340`), because Arch ships
+no machine-readable support list (`nvidia-utils` has only `supportedchips.html`).
+It runs on the ISO before the disk is touched. With the NVIDIA driver, the
+initramfs leaves out the `kms` hook so nouveau never loads early, and the
+suspend/hibernate/resume helper services are enabled.
+
+### Desktop packages (installed now)
+
+KDE Plasma (`plasma-meta`) on Wayland, SDDM on Wayland with KWin, PipeWire,
+the core KDE apps (Konsole, Dolphin, Kate, Ark, Spectacle, Gwenview, Okular,
+KCalc, Filelight, Partition Manager), thumbnailers, Inter, JetBrains Mono and
+Noto fonts, Flatpak (Discover's only backend, since the root is read-only),
+Bluetooth and Firefox. multilib is enabled for the 32-bit drivers. The look
+is still stock Breeze until the theme is designed.
 
 ### Windows `.exe` as a first-class file type
 

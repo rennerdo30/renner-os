@@ -29,6 +29,7 @@ STAGING=/tmp/renner-install
 
 SYSTEM_FILES=(
     usr/bin/renner-update
+    usr/bin/renner-gpu-detect
     usr/lib/renner-os/initrd-etc-overlay
     usr/lib/systemd/system/renner-etc-overlay.service
     usr/lib/initcpio/install/renner-etc-overlay
@@ -45,6 +46,18 @@ PACKAGES=(
     btrfs-progs dosfstools arch-install-scripts systemd-ukify
     networkmanager sudo nano less man-db
 )
+
+# KDE Plasma desktop. The look (renner theme) comes later as its own package.
+DESKTOP_PACKAGES=(
+    plasma-meta sddm
+    konsole dolphin kate ark spectacle gwenview okular kcalc filelight partitionmanager
+    ffmpegthumbs kdegraphics-thumbnailers kio-extras
+    pipewire pipewire-pulse pipewire-alsa pipewire-jack wireplumber
+    inter-font ttf-jetbrains-mono noto-fonts noto-fonts-emoji noto-fonts-cjk
+    flatpak bluez bluez-utils firefox
+)
+# GPU driver packages come from renner-gpu-detect (see install_desktop).
+GPU_PACKAGES=() NVIDIA_DRIVER=none GPU_MULTI=0
 
 say() { printf '\n\033[1m==> %s\033[0m\n' "$*"; }
 die() { printf '\n\033[31mrenner-install: %s\033[0m\nLog: %s\n' "$*" "$LOG" >&2; exit 1; }
@@ -185,6 +198,52 @@ install_packages() {
     sed -i 's|^#\?DBPath.*|DBPath = /usr/lib/sysimage/pacman/|' "$TARGET/etc/pacman.conf"
 }
 
+detect_gpus() {
+    say "Detecting graphics hardware"
+    command -v python3 >/dev/null || pacman -Sy --noconfirm --needed python >/dev/null
+    local profile rc=0
+    profile=$(python3 "$STAGING/usr/bin/renner-gpu-detect") || rc=$?
+    echo "$profile" | sed 's/^/    /'
+    case $rc in
+        0) ;;
+        4) echo "    WARNING: this NVIDIA GPU needs the 580 legacy driver, which comes with the"
+           echo "    renner-os package repository later. Installing the open nouveau driver for now." ;;
+        *) die "GPU detection failed (exit $rc)" ;;
+    esac
+    eval "$(grep -E '^RENNER_GPU_(PACKAGES|NVIDIA_DRIVER|MULTI)=' <<<"$profile")"
+    read -r -a GPU_PACKAGES <<<"$RENNER_GPU_PACKAGES"
+    NVIDIA_DRIVER=$RENNER_GPU_NVIDIA_DRIVER
+    GPU_MULTI=$RENNER_GPU_MULTI
+}
+
+install_desktop() {
+    say "Installing the desktop and graphics drivers (this takes a while)"
+    # multilib carries the 32-bit drivers that games and Wine/Proton need.
+    sed -i '/^#\[multilib\]/,/^#Include/ s/^#//' "$TARGET/etc/pacman.conf"
+    grep -q '^\[multilib\]' "$TARGET/etc/pacman.conf" || die "could not enable multilib"
+    arch-chroot "$TARGET" pacman -Sy --noconfirm --needed "${DESKTOP_PACKAGES[@]}" "${GPU_PACKAGES[@]}"
+
+    # SDDM on Wayland with KWin, like the Plasma session itself.
+    install -d "$TARGET/etc/sddm.conf.d"
+    cat >"$TARGET/etc/sddm.conf.d/10-renner.conf" <<'EOF'
+[General]
+DisplayServer=wayland
+GreeterEnvironment=QT_WAYLAND_SHELL_INTEGRATION=layer-shell
+
+[Wayland]
+CompositorCommand=kwin_wayland --drm --no-lockscreen --no-global-shortcuts --locale1
+
+[Theme]
+Current=breeze
+EOF
+    local units=(sddm.service bluetooth.service)
+    if [[ $NVIDIA_DRIVER == open ]]; then
+        units+=(nvidia-suspend.service nvidia-hibernate.service nvidia-resume.service)
+    fi
+    ((GPU_MULTI)) && units+=(switcheroo-control.service)
+    arch-chroot "$TARGET" systemctl enable "${units[@]}" >/dev/null
+}
+
 install_system_files() {
     say "Installing renner.dev OS components"
     local f mode
@@ -247,7 +306,10 @@ setup_boot() {
     echo "root=UUID=$ROOT_UUID rootfstype=btrfs rootflags=subvol=/@deployments/$DEPLOYMENT,compress=zstd:1,noatime ro$console" \
         >"$TARGET/etc/kernel/cmdline"
 
-    sed -i 's/^HOOKS=.*/HOOKS=(base systemd autodetect microcode modconf kms keyboard sd-vconsole block filesystems renner-etc-overlay fsck)/' \
+    # With the NVIDIA driver, leave out `kms` so nouveau never loads early.
+    local kms=" kms"
+    [[ $NVIDIA_DRIVER == open ]] && kms=""
+    sed -i "s/^HOOKS=.*/HOOKS=(base systemd autodetect microcode modconf$kms keyboard sd-vconsole block filesystems renner-etc-overlay fsck)/" \
         "$TARGET/etc/mkinitcpio.conf"
     cat >"$TARGET/etc/mkinitcpio.d/linux.preset" <<'EOF'
 # renner.dev OS: one unified kernel image per deployment, copied to the ESP
@@ -286,9 +348,11 @@ run_stages() {  # everything that changes the disk; leaves the target mounted
     check_environment
     collect_settings
     fetch_system_files
+    detect_gpus
     partition_disk
     create_subvolumes
     install_packages
+    install_desktop
     install_system_files
     configure_system
     setup_boot

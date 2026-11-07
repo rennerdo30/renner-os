@@ -15,7 +15,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - name: Compile check
-        run: python3 -m py_compile packages/renner-gpu/renner-gpu-detect lab/lab.py lab/pkgcache.py
+        run: python3 -m py_compile system/usr/bin/renner-gpu-detect lab/lab.py lab/pkgcache.py
       - name: Shell syntax
         run: |
           for f in packages/renner-exe/renner-exe install/install.sh \
