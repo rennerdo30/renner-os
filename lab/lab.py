@@ -388,7 +388,9 @@ def guest_exec(name: str, argv: list[str], timeout: float = 60.0) -> tuple[int, 
                         raise ConnectionError("guest agent closed the connection")
                     buf += chunk
                 line, buf = buf.split(b"\n", 1)
-                if not line.strip():
+                # guest-sync-delimited answers with a 0xFF marker first.
+                line = line.lstrip(b"\xff").strip()
+                if not line:
                     continue
                 msg = json.loads(line)
                 if "error" in msg:
@@ -396,11 +398,15 @@ def guest_exec(name: str, argv: list[str], timeout: float = 60.0) -> tuple[int, 
                 if "return" in msg:
                     return msg["return"]
 
-        # Resynchronise: a stale reply from an earlier client could be queued.
+        # Resynchronise: a stale reply from an earlier client could be queued;
+        # replies until our token are dropped.
         token = secrets.randbelow(1 << 30)
-        s.sendall(b"\xff")
-        while call("guest-sync-delimited", id=token) != token:
-            pass
+        for _ in range(20):
+            try:
+                if call("guest-sync-delimited", id=token) == token:
+                    break
+            except RuntimeError:
+                continue
         pid = call("guest-exec", path=argv[0], arg=argv[1:], **{"capture-output": True})["pid"]
         end = time.time() + timeout
         while time.time() < end:
@@ -415,7 +421,13 @@ def guest_exec(name: str, argv: list[str], timeout: float = 60.0) -> tuple[int, 
 
 def cmd_exec(a) -> None:
     """lab.py exec VM [--timeout S] [--wait-agent S] -- CMD ARGS..."""
-    argv = a.argv[1:] if a.argv and a.argv[0] == "--" else a.argv
+    # argparse's REMAINDER also swallows options after the VM name; take them here.
+    argv = list(a.argv)
+    while argv and argv[0] in ("--timeout", "--wait-agent") and len(argv) > 1:
+        setattr(a, argv[0][2:].replace("-", "_"), float(argv[1]))
+        argv = argv[2:]
+    if argv and argv[0] == "--":
+        argv = argv[1:]
     if not argv:
         sys.exit("lab: exec needs a command")
     end = time.time() + a.wait_agent

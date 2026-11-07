@@ -35,17 +35,7 @@ grep -ao "RENNER-INSTALL-RC=[0-9]*" $SER
 U next                               # Restart now
 for i in $(seq 1 60); do L status | grep -q "$VM: stopped" && break; sleep 2; done
 rm -f $SER; L up $VM --window --minutes 30 >/dev/null; sleep 40
-L exec $VM --wait-agent 180 -- true >/dev/null || fail "guest agent in the installed system"
-logged_in=0
-for attempt in 1 2 3; do
-    L type $VM pw1 --enter
-    for i in $(seq 1 30); do
-        if L exec $VM -- sh -c 'test -S /run/user/$(id -u tom)/wayland-0' 2>/dev/null; then logged_in=1; break; fi
-        sleep 2
-    done
-    ((logged_in)) && break
-done
-((logged_in)) || fail "login as tom"
+VM=$VM bash lab/login.sh tom pw1 || fail "login as tom"
 sleep 8
 L shot $VM $S/I7-desktop.png
 grep -ao "renner login" $SER | head -1
