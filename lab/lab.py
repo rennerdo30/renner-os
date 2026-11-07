@@ -340,6 +340,23 @@ def cmd_up(a) -> None:
             print("note: the running cache stops before this VM; restart it with a longer --minutes")
     log = d / "qemu.log"
     log.write_text(" ".join(args) + "\n")
+    # A VM that was just stopped may still hold its ports for a moment; QEMU
+    # then fails with "Failed to find an available port" (2026-11-08).
+    ports = [state["qmp_port"], ctl_port(state), qga_port(state)]
+    end = time.time() + 30
+    while time.time() < end:
+        busy = []
+        for port in ports:
+            with socket.socket() as probe:
+                try:
+                    probe.bind(("127.0.0.1", port))
+                except OSError:
+                    busy.append(port)
+        if not busy:
+            break
+        time.sleep(1)
+    else:
+        sys.exit(f"lab: ports still in use: {busy}")
     pid = spawn_detached(args, log)
     if a.window:
         place_window(pid)
