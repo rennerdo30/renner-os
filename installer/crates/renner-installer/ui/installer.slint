@@ -1,0 +1,219 @@
+// renner.dev OS installer UI (PoC: function first; the final look comes with
+// the theme spec, RO-4). Runs on the plain Arch ISO through Slint's LinuxKMS
+// backend, and in a normal window elsewhere.
+
+import { Button, LineEdit, StandardListView, ProgressIndicator, ScrollView } from "std-widgets.slint";
+import "fonts/Inter-Regular.ttf";
+import "fonts/Inter-SemiBold.ttf";
+
+export global Palette {
+    out property <color> bg: #15171c;
+    out property <color> panel: #1e2128;
+    out property <color> line: #2c3039;
+    out property <color> text: #e8eaee;
+    out property <color> muted: #9aa1ad;
+    out property <color> accent: #4c8dff;
+    out property <color> danger: #ff6b6b;
+}
+
+component Title inherits Text {
+    font-size: 26px;
+    font-weight: 600;
+    color: Palette.text;
+}
+
+component Body inherits Text {
+    font-size: 15px;
+    color: Palette.muted;
+    wrap: word-wrap;
+}
+
+component Step inherits Text {
+    in property <bool> active;
+    in property <bool> done;
+    font-size: 14px;
+    font-weight: active ? 600 : 400;
+    color: active ? Palette.text : done ? Palette.muted : #5d6470;
+}
+
+export component InstallerWindow inherits Window {
+    title: "renner.dev OS Setup";
+    default-font-family: "Inter";
+    preferred-width: 1024px;
+    preferred-height: 720px;
+    background: Palette.bg;
+
+    // 0 welcome, 1 disk, 2 user, 3 summary, 4 installing, 5 done, 6 failed
+    in-out property <int> page: 0;
+
+    in property <[StandardListViewItem]> disk-labels;
+    in-out property <int> disk-index: -1;
+    in property <string> disk-note;
+
+    in-out property <string> hostname: "renner";
+    in-out property <string> username;
+    in-out property <string> password;
+    in-out property <string> password2;
+
+    in property <string> plan-text;
+    in property <string> error-text;
+    in property <string> stage-text;
+    in property <float> progress;
+    in property <string> log-tail;
+
+    callback make-plan();     // validates the user page and builds the plan
+    callback start-install();
+    callback reboot();
+
+    HorizontalLayout {
+        // Left: the steps, like a classic installer.
+        Rectangle {
+            width: 240px;
+            background: Palette.panel;
+            VerticalLayout {
+                padding: 28px;
+                spacing: 18px;
+                alignment: start;
+                Text {
+                    text: "renner.dev OS";
+                    font-size: 20px;
+                    font-weight: 600;
+                    color: Palette.text;
+                }
+                Rectangle { height: 8px; }
+                Step { text: "Welcome"; active: page == 0; done: page > 0; }
+                Step { text: "Disk"; active: page == 1; done: page > 1; }
+                Step { text: "Your account"; active: page == 2; done: page > 2; }
+                Step { text: "Summary"; active: page == 3; done: page > 3; }
+                Step { text: "Install"; active: page >= 4; done: page == 5; }
+            }
+        }
+
+        // Right: the current page.
+        VerticalLayout {
+            padding: 40px;
+            spacing: 18px;
+
+            if page == 0: VerticalLayout {
+                spacing: 16px;
+                alignment: start;
+                Title { text: "Welcome"; }
+                Body { text: "This installs renner.dev OS on this computer: an Arch-based desktop with KDE Plasma, a read-only system that updates safely, and automatic graphics drivers.\n\nYou need a disk of at least 32 GB that may be erased, and an internet connection."; }
+            }
+
+            if page == 1: VerticalLayout {
+                spacing: 12px;
+                Title { text: "Where should renner.dev OS go?"; }
+                Body { text: "The selected disk is erased completely."; }
+                StandardListView {
+                    min-height: 260px;
+                    model: root.disk-labels;
+                    current-item <=> root.disk-index;
+                }
+                Body { text: root.disk-note; }
+            }
+
+            if page == 2: VerticalLayout {
+                spacing: 10px;
+                alignment: start;
+                Title { text: "Your account"; }
+                Body { text: "This account can install software and change settings."; }
+                Text { text: "User name"; color: Palette.text; font-size: 14px; }
+                LineEdit { text <=> root.username; placeholder-text: "e.g. alex"; }
+                Text { text: "Password"; color: Palette.text; font-size: 14px; }
+                LineEdit { text <=> root.password; input-type: InputType.password; }
+                Text { text: "Repeat password"; color: Palette.text; font-size: 14px; }
+                LineEdit { text <=> root.password2; input-type: InputType.password; }
+                Text { text: "Computer name"; color: Palette.text; font-size: 14px; }
+                LineEdit { text <=> root.hostname; }
+            }
+
+            if page == 3: VerticalLayout {
+                spacing: 12px;
+                Title { text: "Ready to install"; }
+                Body { text: "Check the plan. Nothing has been changed yet."; }
+                ScrollView {
+                    min-height: 300px;
+                    Text {
+                        text: root.plan-text;
+                        font-family: "Inter";
+                        font-size: 14px;
+                        color: Palette.text;
+                        wrap: word-wrap;
+                    }
+                }
+            }
+
+            if page == 4 || page == 5 || page == 6: VerticalLayout {
+                spacing: 14px;
+                Title { text: page == 4 ? "Installing" : page == 5 ? "Done" : "The install failed"; }
+                Body {
+                    text: page == 5 ? "renner.dev OS is installed. Remove the install medium and restart."
+                        : page == 6 ? "Nothing is lost on other disks. The log is in /tmp/renner-install.log."
+                        : root.stage-text;
+                }
+                ProgressIndicator { progress: root.progress; height: 8px; }
+                Rectangle {
+                    background: Palette.panel;
+                    border-radius: 6px;
+                    min-height: 280px;
+                    clip: true;
+                    Text {
+                        x: 12px; y: 10px;
+                        width: parent.width - 24px;
+                        text: root.log-tail;
+                        font-size: 12px;
+                        color: Palette.muted;
+                        wrap: word-wrap;
+                    }
+                }
+            }
+
+            Rectangle { vertical-stretch: 1; }
+
+            Text {
+                text: root.error-text;
+                color: Palette.danger;
+                font-size: 14px;
+                wrap: word-wrap;
+                visible: root.error-text != "";
+            }
+
+            // Navigation
+            HorizontalLayout {
+                spacing: 12px;
+                alignment: end;
+                if page >= 1 && page <= 3: Button {
+                    text: "Back";
+                    clicked => { root.page -= 1; }
+                }
+                if page == 0: Button {
+                    text: "Next";
+                    primary: true;
+                    clicked => { root.page = 1; }
+                }
+                if page == 1: Button {
+                    text: "Next";
+                    primary: true;
+                    enabled: root.disk-index >= 0;
+                    clicked => { root.page = 2; }
+                }
+                if page == 2: Button {
+                    text: "Next";
+                    primary: true;
+                    clicked => { root.make-plan(); }
+                }
+                if page == 3: Button {
+                    text: "Erase disk and install";
+                    primary: true;
+                    clicked => { root.start-install(); }
+                }
+                if page == 5: Button {
+                    text: "Restart now";
+                    primary: true;
+                    clicked => { root.reboot(); }
+                }
+            }
+        }
+    }
+}

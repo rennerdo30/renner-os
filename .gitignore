@@ -3,3 +3,4 @@ __pycache__/
 # Lab data (disks, ISOs, screenshots) lives in E:/AgentData/renneros-lab, never here.
 *.qcow2
 *.iso
+target/

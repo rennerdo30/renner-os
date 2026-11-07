@@ -14,6 +14,8 @@
 #
 # Options (anything left out is asked interactively):
 #   --disk DEV  --hostname NAME  --user NAME  --password PW (testing only)
+#   --password-hash HASH  crypt(3) hash instead of a password (renner-installer)
+#   --no-desktop     console system only, no Plasma or GPU drivers
 #   --timezone ZONE (UTC)  --locale LOCALE (en_US.UTF-8)  --keymap MAP (us)
 #   --source URL     where install/ and system/ are fetched from
 #   --serial-console add console=ttyS0 (test VMs)
@@ -21,8 +23,8 @@
 set -Eeuo pipefail
 
 SOURCE=${RENNER_SOURCE:-https://raw.githubusercontent.com/rennerdo30/renner-os/main}
-DISK="" HOSTNAME_="" USERNAME="" PASSWORD="" TIMEZONE=UTC LOCALE=en_US.UTF-8 KEYMAP=us
-SERIAL=0 ASSUME_YES=0
+DISK="" HOSTNAME_="" USERNAME="" PASSWORD="" PASSWORD_HASH="" TIMEZONE=UTC LOCALE=en_US.UTF-8 KEYMAP=us
+SERIAL=0 ASSUME_YES=0 DESKTOP=1
 LOG=/tmp/renner-install.log
 TARGET=/mnt
 STAGING=/tmp/renner-install
@@ -74,6 +76,8 @@ parse_args() {
             --hostname) HOSTNAME_=$2; shift ;;
             --user) USERNAME=$2; shift ;;
             --password) PASSWORD=$2; shift ;;
+            --password-hash) PASSWORD_HASH=$2; shift ;;
+            --no-desktop) DESKTOP=0 ;;
             --timezone) TIMEZONE=$2; shift ;;
             --locale) LOCALE=$2; shift ;;
             --keymap) KEYMAP=$2; shift ;;
@@ -117,7 +121,7 @@ collect_settings() {
     [[ -n $HOSTNAME_ ]] || ask HOSTNAME_ "Computer name" renner
     [[ -n $USERNAME ]] || ask USERNAME "User name"
     [[ $USERNAME =~ ^[a-z_][a-z0-9_-]*$ ]] || die "invalid user name '$USERNAME'"
-    if [[ -z $PASSWORD ]]; then
+    if [[ -z $PASSWORD && -z $PASSWORD_HASH ]]; then
         local again
         read -r -s -p "Password for $USERNAME: " PASSWORD </dev/tty; echo
         read -r -s -p "Repeat password: " again </dev/tty; echo
@@ -286,7 +290,11 @@ EOF
     arch-chroot "$TARGET" hwclock --systohc
 
     arch-chroot "$TARGET" useradd -m -G wheel -s /bin/bash "$USERNAME"
-    printf '%s:%s\n' "$USERNAME" "$PASSWORD" | arch-chroot "$TARGET" chpasswd
+    if [[ -n $PASSWORD_HASH ]]; then
+        printf '%s:%s\n' "$USERNAME" "$PASSWORD_HASH" | arch-chroot "$TARGET" chpasswd -e
+    else
+        printf '%s:%s\n' "$USERNAME" "$PASSWORD" | arch-chroot "$TARGET" chpasswd
+    fi
     echo '%wheel ALL=(ALL:ALL) ALL' >"$TARGET/etc/sudoers.d/10-wheel"
     chmod 440 "$TARGET/etc/sudoers.d/10-wheel"
 
@@ -352,7 +360,7 @@ run_stages() {  # everything that changes the disk; leaves the target mounted
     partition_disk
     create_subvolumes
     install_packages
-    install_desktop
+    if ((DESKTOP)); then install_desktop; fi
     install_system_files
     configure_system
     setup_boot

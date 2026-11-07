@@ -1,0 +1,18 @@
+[workspace]
+resolver = "3"
+members = ["crates/installer-core", "crates/renner-installer"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+license = "UNLICENSED"   # owner decision pending (RO-15)
+repository = "https://github.com/rennerdo30/renner-os"
+
+[workspace.dependencies]
+anyhow = "1.0.104"
+clap = { version = "4.6.7", features = ["derive"] }
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1"
+toml = "1.2.1"
+slint = { version = "1.18.1", default-features = false }
+slint-build = "1.18.1"

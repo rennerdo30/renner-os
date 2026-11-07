@@ -1,0 +1,24 @@
+[package]
+name = "renner-installer"
+description = "renner.dev OS installer: GUI on the plain Arch ISO (LinuxKMS) and unattended installs"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[features]
+default = []
+# The Slint UI (software renderer, fonts embedded).
+gui = ["dep:slint", "dep:slint-build"]
+# Draw straight to the screen through DRM/KMS with libinput: the plain Arch ISO.
+kms = ["gui", "slint/backend-linuxkms-noseat"]
+# A normal window, for developing the UI on a desktop.
+desktop-preview = ["gui", "slint/backend-winit"]
+
+[dependencies]
+installer-core = { path = "../installer-core" }
+anyhow.workspace = true
+clap.workspace = true
+slint = { workspace = true, optional = true, features = ["std", "compat-1-2", "renderer-software"] }
+
+[build-dependencies]
+slint-build = { workspace = true, optional = true }
