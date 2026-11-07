@@ -114,8 +114,10 @@ impl InstallConfig {
         if self.system.locale.is_empty() || self.system.keymap.is_empty() || self.system.timezone.is_empty() {
             problems.push("system.locale, system.keymap and system.timezone must not be empty".to_string());
         }
-        if !(self.options.source.starts_with("https://") || self.options.source.starts_with("http://")) {
-            problems.push(format!("options.source '{}' must be an http(s) URL", self.options.source));
+        // file:/// is the install medium itself (the patched ISO carries install/ and system/).
+        let source = &self.options.source;
+        if !(source.starts_with("https://") || source.starts_with("http://") || source.starts_with("file:///")) {
+            problems.push(format!("options.source '{source}' must be an http(s) URL or a file:/// path"));
         }
         if problems.is_empty() {
             Ok(())
@@ -204,6 +206,17 @@ mod tests {
             .replace("name = \"test\"", "name = \"Test\"");
         let err = InstallConfig::from_toml(&text).unwrap_err().to_string();
         assert!(err.contains("hostname") && err.contains("user.name"), "{err}");
+    }
+
+    #[test]
+    fn source_may_be_the_install_medium() {
+        let with = |s: &str| format!("{GOOD}\n[options]\nsource = \"{s}\"\n");
+        assert!(InstallConfig::from_toml(&with("file:///run/archiso/bootmnt/renner/source")).is_ok());
+        assert!(InstallConfig::from_toml(&with("http://10.0.2.2:8079/renner")).is_ok());
+        for bad in ["file://host/x", "ftp://mirror/x", "/run/archiso"] {
+            let err = InstallConfig::from_toml(&with(bad)).unwrap_err().to_string();
+            assert!(err.contains("options.source"), "{bad}: {err}");
+        }
     }
 
     #[test]

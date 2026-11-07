@@ -87,7 +87,7 @@ install -m 755 "$INSTALLER" "$P/renner-installer"
 (cd "$P" && sha256sum renner-installer >renner-installer.sha256)
 install -m 755 "$REPO/iso/autostart.sh" "$P/autostart.sh"
 cp -r "$REPO/install" "$REPO/system" "$P/source/"
-git -C "$REPO" rev-parse --short HEAD >"$P/source/REVISION" 2>/dev/null || echo unknown >"$P/source/REVISION"
+git -c safe.directory="$REPO" -C "$REPO" rev-parse --short HEAD >"$P/source/REVISION" 2>/dev/null || echo unknown >"$P/source/REVISION"
 
 options="$basedir $uuid copytoram=n script=/run/archiso/bootmnt/renner/autostart.sh"
 [[ -n $MIRROR ]] && options+=" renner.mirror=$MIRROR"

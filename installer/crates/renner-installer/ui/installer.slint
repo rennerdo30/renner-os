@@ -173,6 +173,9 @@ component Field inherits VerticalLayout {
     callback accepted;
     callback tapped;
     public function take-focus() { input.focus(); }
+    // Text set from outside (the on-screen keyboard) leaves the cursor where
+    // it was; put it after the last character, like typing would.
+    public function cursor-to-end() { input.set-selection-offsets(2147483647, 2147483647); }
     spacing: 8px;
     Text { text: root.label; color: Brand.muted; font-size: 14px; font-weight: 600; }
     Rectangle {
@@ -635,7 +638,7 @@ export component InstallerWindow inherits Window {
                                         accepted => { root.go-next(); }
                                         tapped => { root.osk-target = 0; root.osk-visible = true; }
                                     }
-                                    Field {
+                                    host-field := Field {
                                         label: "Computer name";
                                         text <=> root.hostname;
                                         accepted => { root.go-next(); }
@@ -643,14 +646,14 @@ export component InstallerWindow inherits Window {
                                     }
                                 }
                                 Row {
-                                    Field {
+                                    pass-field := Field {
                                         label: "Password";
                                         secret: true;
                                         text <=> root.password;
                                         accepted => { root.go-next(); }
                                         tapped => { root.osk-target = 2; root.osk-visible = true; }
                                     }
-                                    Field {
+                                    pass2-field := Field {
                                         label: "Repeat password";
                                         secret: true;
                                         text <=> root.password2;
@@ -843,7 +846,13 @@ export component InstallerWindow inherits Window {
             y: root.height - self.height;
             width: root.width;
             height: 330px;
-            typed(key) => { root.osk-typed(root.osk-target, key); }
+            typed(key) => {
+                root.osk-typed(root.osk-target, key);
+                if (root.osk-target == 0) { user-field.cursor-to-end(); }
+                else if (root.osk-target == 1) { host-field.cursor-to-end(); }
+                else if (root.osk-target == 2) { pass-field.cursor-to-end(); }
+                else { pass2-field.cursor-to-end(); }
+            }
             done => { root.osk-visible = false; }
         }
     }
