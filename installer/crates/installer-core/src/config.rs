@@ -37,6 +37,9 @@ pub struct SystemConfig {
     pub locale: String,
     #[serde(default = "default_keymap")]
     pub keymap: String,
+    /// Keyboard layout of the desktop and the login screen (XKB, e.g. "de").
+    #[serde(default = "default_xkb_layout")]
+    pub xkb_layout: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -71,6 +74,7 @@ impl Default for Options {
 fn default_timezone() -> String { "UTC".into() }
 fn default_locale() -> String { "en_US.UTF-8".into() }
 fn default_keymap() -> String { "us".into() }
+fn default_xkb_layout() -> String { "us".into() }
 fn default_source() -> String { DEFAULT_SOURCE.into() }
 fn yes() -> bool { true }
 
@@ -111,8 +115,11 @@ impl InstallConfig {
                     .to_string(),
             );
         }
-        if self.system.locale.is_empty() || self.system.keymap.is_empty() || self.system.timezone.is_empty() {
-            problems.push("system.locale, system.keymap and system.timezone must not be empty".to_string());
+        if [&self.system.locale, &self.system.keymap, &self.system.xkb_layout, &self.system.timezone]
+            .iter()
+            .any(|v| v.is_empty())
+        {
+            problems.push("system.locale, keymap, xkb_layout and timezone must not be empty".to_string());
         }
         // file:/// is the install medium itself (the patched ISO carries install/ and system/).
         let source = &self.options.source;

@@ -18,7 +18,8 @@ wait_s 6; L shot $VM $S/I0-bootmenu.png
 L key $VM ret                        # WHPX: the boot menu countdown does not run
 wait_s 45
 wait_s 15; L shot $VM $S/I1-autostart.png
-C 1057 677; C 780 279; C 1057 677                          # welcome Next, disk card, Next
+C 1057 677; wait_s 4; L shot $VM $S/I1a-network.png; C 1057 677   # welcome Next, network Next (cable)
+C 780 279; C 1057 677                                      # disk card, Next
 C 582 292; C 604 575; C 892 575; C 856 695                 # user: tom (on-screen keyboard)
 L shot $VM $S/I1b-cursor.png
 C 582 349; C 964 575; C 388 575; C 316 515                 # password: pw1

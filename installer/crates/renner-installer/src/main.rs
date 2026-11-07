@@ -15,6 +15,10 @@ use std::process::ExitCode;
 mod console;
 #[cfg(feature = "gui")]
 mod gui;
+#[cfg(feature = "gui")]
+mod network;
+#[cfg(feature = "gui")]
+mod region;
 
 #[derive(Parser)]
 #[command(name = "renner-installer", version, about = "Install renner.dev OS")]

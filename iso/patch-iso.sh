@@ -4,7 +4,9 @@
 # Takes the official Arch Linux ISO and writes a copy that boots straight into
 # the renner.dev OS installer. Arch's own files stay byte for byte as they are;
 # the patch only adds:
-#   /renner/                    the installer, autostart.sh, install/ and system/
+#   /renner/                    the installer, autostart.sh, install/ and system/,
+#                               and pkgs/: the libraries the installer's screen
+#                               and input need, so it starts without a network
 #   a "renner.dev OS installer" boot entry, made the default, with a short
 #   timeout, for UEFI (systemd-boot, in the ISO tree and in the EFI image) and
 #   for BIOS (syslinux)
@@ -15,7 +17,8 @@
 #                    [--out renner-os-installer.iso] [--sha256 HEX]
 #                    [--mirror URL] [--source URL] [--serial-console]
 #
-# Needs: xorriso (libisoburn), mtools, coreutils. Runs as a normal user.
+# Needs: xorriso (libisoburn), mtools, coreutils, and pacman with synced
+# package databases (an Arch system or the lab's WSL distro) for pkgs/.
 set -Eeuo pipefail
 
 REPO=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
@@ -46,7 +49,7 @@ done
 for url in "$MIRROR" "$SOURCE"; do
     [[ -z $url || $url =~ ^(https?|file)://[^[:space:]\']+$ ]] || die "not a usable URL: $url"
 done
-for tool in xorriso mcopy mtype sha256sum; do
+for tool in xorriso mcopy mtype sha256sum pacman curl; do
     command -v "$tool" >/dev/null || die "$tool is missing (packages: libisoburn mtools)"
 done
 ISO=$(realpath "$ISO")
@@ -88,6 +91,21 @@ install -m 755 "$INSTALLER" "$P/renner-installer"
 install -m 755 "$REPO/iso/autostart.sh" "$P/autostart.sh"
 cp -r "$REPO/install" "$REPO/system" "$P/source/"
 git -c safe.directory="$REPO" -C "$REPO" rev-parse --short HEAD >"$P/source/REVISION" 2>/dev/null || echo unknown >"$P/source/REVISION"
+
+# The installer's libraries and everything they pull in that the ISO lacks,
+# resolved against the ISO's own package list.
+say "Adding the installer's libraries"
+xorriso -indev "$ISO" -osirrox on -extract /arch/pkglist.x86_64.txt "$WORK/pkglist" 2>/dev/null \
+    || die "the ISO has no package list (arch/pkglist.x86_64.txt)"
+mkdir -p "$WORK/db" "$P/pkgs"
+cp -r /var/lib/pacman/sync "$WORK/db/"
+pacman -Sp --dbpath "$WORK/db" --noconfirm --print-format '%n %l' libinput libxkbcommon fontconfig \
+    >"$WORK/pkgs.txt" || die "could not resolve the installer's libraries (pacman -Sy first?)"
+while read -r pkg url; do
+    grep -q "^$pkg " "$WORK/pkglist" && continue
+    curl -fsSL --retry 2 -o "$P/pkgs/${url##*/}" "$url" || die "download failed: $url"
+done <"$WORK/pkgs.txt"
+echo "    $(ls "$P/pkgs" | wc -l) packages, $(du -sh "$P/pkgs" | cut -f1)"
 
 options="$basedir $uuid copytoram=n script=/run/archiso/bootmnt/renner/autostart.sh"
 [[ -n $MIRROR ]] && options+=" renner.mirror=$MIRROR"

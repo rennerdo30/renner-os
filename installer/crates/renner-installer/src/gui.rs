@@ -13,6 +13,9 @@ use std::collections::VecDeque;
 use std::io::Write;
 use std::process::{Command, Stdio};
 use std::rc::Rc;
+use std::sync::{Arc, Mutex};
+
+use crate::{network, region};
 
 slint::include_modules!();
 
@@ -100,6 +103,138 @@ pub fn run() -> Result<()> {
     let disks = Rc::new(disks);
     let pending: Rc<RefCell<Option<Plan>>> = Rc::new(RefCell::new(None));
 
+    // Language, keyboard, time zone. A language suggests a keyboard and a zone.
+    let zones = Rc::new(region::timezones());
+    let strings = |v: Vec<String>| ModelRc::new(VecModel::from(v.into_iter().map(SharedString::from).collect::<Vec<_>>()));
+    ui.set_languages(strings(region::LANGUAGES.iter().map(|l| l.label.to_string()).collect()));
+    ui.set_keyboards(strings(region::KEYBOARDS.iter().map(|k| k.label.to_string()).collect()));
+    ui.set_tz_regions(strings(zones.iter().map(|(r, _)| r.clone()).collect()));
+    let show_zone = {
+        let weak = ui.as_weak();
+        let zones = zones.clone();
+        move |zone: &str| {
+            let ui = weak.unwrap();
+            let (r, c) = region::find_zone(&zones, zone);
+            ui.set_tz_region_index(r as i32);
+            ui.set_tz_cities(strings(zones[r].1.clone()));
+            ui.set_tz_city_index(c as i32);
+        }
+    };
+    let pick_language = {
+        let weak = ui.as_weak();
+        let show_zone = show_zone.clone();
+        move |i: i32| {
+            let ui = weak.unwrap();
+            let lang = &region::LANGUAGES[usize::try_from(i).unwrap_or(0).min(region::LANGUAGES.len() - 1)];
+            ui.set_language_index(i.max(0));
+            ui.set_keyboard_index(region::keyboard_index(lang.keyboard) as i32);
+            show_zone(lang.timezone);
+        }
+    };
+    pick_language(0);
+    ui.on_language_picked(pick_language);
+    ui.on_tz_region_picked({
+        let weak = ui.as_weak();
+        let zones = zones.clone();
+        move |r| {
+            let ui = weak.unwrap();
+            if let Some((_, cities)) = zones.get(usize::try_from(r).unwrap_or(0)) {
+                ui.set_tz_cities(strings(cities.clone()));
+                ui.set_tz_city_index(0);
+            }
+        }
+    });
+
+    // Network: status, Wi-Fi scan and connect, all off the UI thread.
+    let networks: Arc<Mutex<Vec<network::Wifi>>> = Arc::new(Mutex::new(Vec::new()));
+    let refresh = {
+        let weak = ui.as_weak();
+        let networks = networks.clone();
+        move |scan: bool| {
+            let weak = weak.clone();
+            let networks = networks.clone();
+            std::thread::spawn(move || {
+                let online = network::online();
+                let device = network::wifi_device();
+                let list = match (&device, online, scan) {
+                    (Some(dev), false, true) => network::scan(dev),
+                    _ => Vec::new(),
+                };
+                let status = if online {
+                    if network::cable() { "Connected with a network cable." } else { "Connected." }
+                } else if device.is_some() {
+                    "Not connected. Pick your Wi-Fi network, or plug in a network cable."
+                } else {
+                    "Not connected. Plug in a network cable; this computer has no Wi-Fi."
+                };
+                let rows: Vec<WifiRow> = list
+                    .iter()
+                    .take(5)
+                    .map(|w| WifiRow {
+                        name: w.name.clone().into(),
+                        detail: format!(
+                            "{} · signal {}",
+                            if w.secured { "Secured" } else { "Open" },
+                            "▮".repeat(w.signal.max(1))
+                        )
+                        .into(),
+                    })
+                    .collect();
+                let had_scan = scan;
+                *networks.lock().unwrap() = list;
+                let _ = slint::invoke_from_event_loop(move || {
+                    let ui = weak.unwrap();
+                    ui.set_online(online);
+                    ui.set_net_status(status.into());
+                    ui.set_has_wifi(device.is_some());
+                    if had_scan || online {
+                        ui.set_wifi(ModelRc::new(VecModel::from(rows)));
+                        ui.set_wifi_index(-1);
+                    }
+                });
+            });
+        }
+    };
+    ui.on_net_refresh({
+        let refresh = refresh.clone();
+        move || refresh(true)
+    });
+    ui.on_wifi_scan({
+        let refresh = refresh.clone();
+        move || refresh(true)
+    });
+    ui.on_wifi_connect({
+        let weak = ui.as_weak();
+        let networks = networks.clone();
+        let refresh = refresh.clone();
+        move || {
+            let ui = weak.unwrap();
+            let Some(name) = usize::try_from(ui.get_wifi_index())
+                .ok()
+                .and_then(|i| networks.lock().unwrap().get(i).map(|w| w.name.clone()))
+            else {
+                return;
+            };
+            let Some(device) = network::wifi_device() else { return };
+            let password = ui.get_wifi_password().to_string();
+            ui.set_wifi_busy(true);
+            ui.set_error_text("".into());
+            let weak = ui.as_weak();
+            let refresh = refresh.clone();
+            std::thread::spawn(move || {
+                let result = network::connect(&device, &name, &password);
+                let _ = slint::invoke_from_event_loop(move || {
+                    let ui = weak.unwrap();
+                    ui.set_wifi_busy(false);
+                    match result {
+                        Ok(()) => refresh(false),
+                        Err(e) => ui.set_error_text(e.into()),
+                    }
+                });
+            });
+        }
+    });
+
     // On-screen keyboard: append to or delete from the targeted field.
     ui.on_osk_typed({
         let weak = ui.as_weak();
@@ -109,7 +244,8 @@ pub fn run() -> Result<()> {
                 0 => ui.get_username(),
                 1 => ui.get_hostname(),
                 2 => ui.get_password(),
-                _ => ui.get_password2(),
+                3 => ui.get_password2(),
+                _ => ui.get_wifi_password(),
             };
             let mut text = current.to_string();
             if key == "\u{8}" {
@@ -122,14 +258,15 @@ pub fn run() -> Result<()> {
                 0 => ui.set_username(text),
                 1 => ui.set_hostname(text),
                 2 => ui.set_password(text),
-                _ => ui.set_password2(text),
+                3 => ui.set_password2(text),
+                _ => ui.set_wifi_password(text),
             }
         }
     });
 
     ui.on_make_plan({
         let weak = ui.as_weak();
-        let (inventory, disks, pending) = (inventory.clone(), disks.clone(), pending.clone());
+        let (inventory, disks, pending, zones) = (inventory.clone(), disks.clone(), pending.clone(), zones.clone());
         move || {
             let ui = weak.unwrap();
             let result = (|| -> Result<Plan> {
@@ -141,13 +278,19 @@ pub fn run() -> Result<()> {
                 anyhow::ensure!(!ui.get_username().is_empty(), "Enter a user name.");
                 anyhow::ensure!(!pw.is_empty(), "Enter a password.");
                 anyhow::ensure!(pw == pw2, "The two passwords are not the same.");
+                let pick = |i: i32, len: usize| usize::try_from(i).unwrap_or(0).min(len.saturating_sub(1));
+                let language = &region::LANGUAGES[pick(ui.get_language_index(), region::LANGUAGES.len())];
+                let keyboard = &region::KEYBOARDS[pick(ui.get_keyboard_index(), region::KEYBOARDS.len())];
+                let (zone_region, cities) = &zones[pick(ui.get_tz_region_index(), zones.len())];
+                let city = &cities[pick(ui.get_tz_city_index(), cities.len())];
                 let config = InstallConfig {
                     disk: DiskConfig { device: disk.path.clone(), erase: true },
                     system: SystemConfig {
                         hostname: ui.get_hostname().to_string(),
-                        timezone: "UTC".into(),
-                        locale: "en_US.UTF-8".into(),
-                        keymap: "us".into(),
+                        timezone: format!("{zone_region}/{city}"),
+                        locale: language.locale.into(),
+                        keymap: keyboard.console.into(),
+                        xkb_layout: keyboard.xkb.into(),
                     },
                     user: UserConfig { name: ui.get_username().to_string(), password_hash: hash_password(&pw)? },
                     options: options_from_env(),
@@ -162,7 +305,7 @@ pub fn run() -> Result<()> {
                     ui.set_erase_warning(plan.erase_warning().into());
                     ui.set_error_text("".into());
                     *pending.borrow_mut() = Some(plan);
-                    ui.set_page(3);
+                    ui.set_page(4);
                 }
                 Err(e) => ui.set_error_text(format!("{e:#}").into()),
             }
@@ -175,7 +318,7 @@ pub fn run() -> Result<()> {
         move || {
             let Some(plan) = pending.borrow_mut().take() else { return };
             let ui = weak.unwrap();
-            ui.set_page(4);
+            ui.set_page(5);
             ui.set_error_text("".into());
             ui.set_stage_text("Getting started".into());
             let weak = ui.as_weak();
@@ -211,11 +354,11 @@ pub fn run() -> Result<()> {
                     match result {
                         Ok(()) => {
                             ui.set_progress(1.0);
-                            ui.set_page(5);
+                            ui.set_page(6);
                         }
                         Err(e) => {
                             ui.set_error_text(format!("{e:#}").into());
-                            ui.set_page(6);
+                            ui.set_page(7);
                         }
                     }
                 });

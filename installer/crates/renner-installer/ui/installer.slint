@@ -13,9 +13,11 @@
 import "fonts/Inter-Regular.ttf";
 import "fonts/Inter-SemiBold.ttf";
 import "fonts/Inter-Bold.ttf";
+import { ComboBox } from "std-widgets.slint";
 
 export struct DiskRow { title: string, detail: string }
 export struct PlanRow { label: string, value: string }
+export struct WifiRow { name: string, detail: string }
 
 export global Brand {
     out property <color> bg: #08090f;
@@ -398,8 +400,31 @@ export component InstallerWindow inherits Window {
     background: Brand.bg;
     forward-focus: keys;
 
-    // 0 welcome, 1 disk, 2 account, 3 summary, 4 installing, 5 done, 6 failed
+    // 0 welcome (language, keyboard, time zone), 1 network, 2 disk,
+    // 3 account, 4 summary, 5 installing, 6 done, 7 failed
     in-out property <int> page: 0;
+
+    in property <[string]> languages;
+    in-out property <int> language-index;
+    in property <[string]> keyboards;
+    in-out property <int> keyboard-index;
+    in property <[string]> tz-regions;
+    in-out property <int> tz-region-index;
+    in property <[string]> tz-cities;
+    in-out property <int> tz-city-index;
+    callback language-picked(int);
+    callback tz-region-picked(int);
+
+    in property <bool> online;
+    in property <string> net-status;
+    in property <bool> has-wifi;
+    in property <[WifiRow]> wifi;
+    in-out property <int> wifi-index: -1;
+    in-out property <string> wifi-password;
+    in property <bool> wifi-busy;
+    callback wifi-scan();
+    callback wifi-connect();
+    callback net-refresh();
 
     in property <[DiskRow]> disks;
     in-out property <int> disk-index: -1;
@@ -418,7 +443,7 @@ export component InstallerWindow inherits Window {
     in property <string> log-tail;
 
     // On-screen keyboard: which field it types into (0 user, 1 computer,
-    // 2 password, 3 repeat) and whether it is shown.
+    // 2 password, 3 repeat, 4 Wi-Fi password) and whether it is shown.
     in-out property <int> osk-target: 0;
     in-out property <bool> osk-visible;
 
@@ -429,24 +454,29 @@ export component InstallerWindow inherits Window {
 
     function go-next() {
         if (page == 0) { page = 1; }
-        else if (page == 1) { if (disk-index >= 0) { page = 2; } }
-        else if (page == 2) { osk-visible = false; make-plan(); }
-        else if (page == 3) { start-install(); }
-        else if (page == 5) { reboot(); }
+        else if (page == 1) { if (online) { osk-visible = false; page = 2; } }
+        else if (page == 2) { if (disk-index >= 0) { page = 3; } }
+        else if (page == 3) { osk-visible = false; make-plan(); }
+        else if (page == 4) { start-install(); }
+        else if (page == 6) { reboot(); }
     }
     function go-back() {
         if (osk-visible) { osk-visible = false; }
-        else if (page >= 1 && page <= 3) { page -= 1; }
+        else if (page >= 1 && page <= 4) { page -= 1; }
     }
     function focus-page() {
         if (page == 0) { next-button.take-focus(); }
-        else if (page == 1) { disk-keys.focus(); }
-        else if (page == 2) { user-field.take-focus(); }
-        else if (page == 3) { install-button.take-focus(); }
-        else if (page == 5) { restart-button.take-focus(); }
+        else if (page == 1) { next-button.take-focus(); }
+        else if (page == 2) { disk-keys.focus(); }
+        else if (page == 3) { user-field.take-focus(); }
+        else if (page == 4) { install-button.take-focus(); }
+        else if (page == 6) { restart-button.take-focus(); }
         else { keys.focus(); }
     }
-    changed page => { focus-page(); }
+    changed page => {
+        if (page == 1) { net-refresh(); }
+        focus-page();
+    }
     init => { focus-page(); }
 
     // Background: dot grid fading downwards, warm and cool glows.
@@ -537,11 +567,12 @@ export component InstallerWindow inherits Window {
                                 }
                             }
                             Rectangle { height: 36px; }
-                            StepItem { text: "Welcome"; index: 0; current: min(root.page, 4); }
-                            StepItem { text: "Disk"; index: 1; current: min(root.page, 4); }
-                            StepItem { text: "Your account"; index: 2; current: min(root.page, 4); }
-                            StepItem { text: "Summary"; index: 3; current: min(root.page, 4); }
-                            StepItem { text: "Install"; index: 4; current: root.page >= 5 ? 5 : min(root.page, 4); }
+                            StepItem { text: "Welcome"; index: 0; current: min(root.page, 5); }
+                            StepItem { text: "Network"; index: 1; current: min(root.page, 5); }
+                            StepItem { text: "Disk"; index: 2; current: min(root.page, 5); }
+                            StepItem { text: "Your account"; index: 3; current: min(root.page, 5); }
+                            StepItem { text: "Summary"; index: 4; current: min(root.page, 5); }
+                            StepItem { text: "Install"; index: 5; current: root.page >= 6 ? 6 : min(root.page, 5); }
                         }
                     }
 
@@ -562,33 +593,102 @@ export component InstallerWindow inherits Window {
                                 text: "A fast, calm desktop that stays out of your way. It takes about ten minutes.";
                                 color: Brand.muted; font-size: 17px; wrap: word-wrap;
                             }
-                            Rectangle { height: 12px; }
-                            for item in [
-                                "KDE Plasma, set up and ready to use",
-                                "Updates that cannot break your system: every version can be rolled back",
-                                "Graphics drivers picked for your hardware",
-                            ]: HorizontalLayout {
-                                spacing: 14px;
-                                Rectangle {
-                                    width: 8px; height: 8px; y: 8px;
-                                    border-radius: 4px;
-                                    background: Brand.accent;
+                            Rectangle { height: 8px; }
+                            GridLayout {
+                                spacing-horizontal: 18px;
+                                spacing-vertical: 8px;
+                                Row {
+                                    Text { text: "Language"; color: Brand.muted; font-size: 14px; font-weight: 600; }
+                                    Text { text: "Keyboard layout"; color: Brand.muted; font-size: 14px; font-weight: 600; }
                                 }
-                                Text { text: item; color: Brand.text; font-size: 16px; wrap: word-wrap; }
+                                Row {
+                                    ComboBox {
+                                        model: root.languages;
+                                        current-index <=> root.language-index;
+                                        selected => { root.language-picked(self.current-index); }
+                                    }
+                                    ComboBox { model: root.keyboards; current-index <=> root.keyboard-index; }
+                                }
+                                Row { Rectangle { height: 6px; } }
+                                Row {
+                                    Text { text: "Time zone"; color: Brand.muted; font-size: 14px; font-weight: 600; colspan: 2; }
+                                }
+                                Row {
+                                    ComboBox {
+                                        model: root.tz-regions;
+                                        current-index <=> root.tz-region-index;
+                                        selected => { root.tz-region-picked(self.current-index); }
+                                    }
+                                    ComboBox { model: root.tz-cities; current-index <=> root.tz-city-index; }
+                                }
                             }
-                            Rectangle { height: 16px; }
+                            Rectangle { height: 8px; }
                             Text {
                                 text: "You need a disk of 32 GB or more that may be erased, and an internet connection.";
                                 color: Brand.faint; font-size: 14px; wrap: word-wrap;
                             }
                         }
 
-                        // Page 1: disk
+                        // Page 1: network
                         VerticalLayout {
                             visible: root.page == 1;
                             height: root.page == 1 ? self.preferred-height : 0;
                             spacing: 14px;
-                            Text { text: "STEP 2 OF 5"; color: Brand.cool; font-size: 12px; font-weight: 600; letter-spacing: 1.4px; }
+                            Text { text: "STEP 2 OF 6"; color: Brand.cool; font-size: 12px; font-weight: 600; letter-spacing: 1.4px; }
+                            Text { text: "Connect to the internet"; color: Brand.text; font-size: 32px; font-weight: 800; letter-spacing: -0.8px; }
+                            HorizontalLayout {
+                                spacing: 12px;
+                                Rectangle {
+                                    width: 12px; height: 12px; y: 5px;
+                                    border-radius: 6px;
+                                    background: root.online ? Brand.success : Brand.faint;
+                                }
+                                Text { text: root.net-status; color: Brand.muted; font-size: 16px; wrap: word-wrap; }
+                            }
+                            VerticalLayout {
+                                visible: root.has-wifi && !root.online;
+                                height: self.visible ? self.preferred-height : 0;
+                                spacing: 10px;
+                                for net[i] in root.wifi: DiskCard {
+                                    height: 58px;
+                                    title: net.name;
+                                    detail: net.detail;
+                                    selected: i == root.wifi-index;
+                                    picked => { root.wifi-index = i; root.wifi-password = ""; }
+                                }
+                                HorizontalLayout {
+                                    spacing: 14px;
+                                    alignment: start;
+                                    wifi-field := Field {
+                                        width: 340px;
+                                        label: "Wi-Fi password";
+                                        secret: true;
+                                        text <=> root.wifi-password;
+                                        accepted => { root.wifi-connect(); }
+                                        tapped => { root.osk-target = 4; root.osk-visible = true; }
+                                    }
+                                    VerticalLayout {
+                                        alignment: end;
+                                        HorizontalLayout {
+                                            spacing: 10px;
+                                            PrimaryButton {
+                                                text: root.wifi-busy ? "Connecting..." : "Connect";
+                                                enabled: root.wifi-index >= 0 && !root.wifi-busy;
+                                                clicked => { root.osk-visible = false; root.wifi-connect(); }
+                                            }
+                                            SecondaryButton { text: "Search again"; clicked => { root.wifi-scan(); } }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        // Page 2: disk
+                        VerticalLayout {
+                            visible: root.page == 2;
+                            height: root.page == 2 ? self.preferred-height : 0;
+                            spacing: 14px;
+                            Text { text: "STEP 3 OF 6"; color: Brand.cool; font-size: 12px; font-weight: 600; letter-spacing: 1.4px; }
                             Text { text: "Where should it go?"; color: Brand.text; font-size: 32px; font-weight: 800; letter-spacing: -0.8px; }
                             Text { text: "The disk you choose is erased completely."; color: Brand.muted; font-size: 16px; }
                             Rectangle { height: 6px; }
@@ -618,12 +718,12 @@ export component InstallerWindow inherits Window {
                             Text { text: root.disk-note; color: Brand.faint; font-size: 13px; wrap: word-wrap; }
                         }
 
-                        // Page 2: account
+                        // Page 3: account
                         VerticalLayout {
-                            visible: root.page == 2;
-                            height: root.page == 2 ? self.preferred-height : 0;
+                            visible: root.page == 3;
+                            height: root.page == 3 ? self.preferred-height : 0;
                             spacing: 14px;
-                            Text { text: "STEP 3 OF 5"; color: Brand.cool; font-size: 12px; font-weight: 600; letter-spacing: 1.4px; }
+                            Text { text: "STEP 4 OF 6"; color: Brand.cool; font-size: 12px; font-weight: 600; letter-spacing: 1.4px; }
                             Text { text: "Create your account"; color: Brand.text; font-size: 32px; font-weight: 800; letter-spacing: -0.8px; }
                             Text { text: "This account can install software and change settings."; color: Brand.muted; font-size: 16px; }
                             Rectangle { height: 6px; }
@@ -664,12 +764,12 @@ export component InstallerWindow inherits Window {
                             }
                         }
 
-                        // Page 3: summary
+                        // Page 4: summary
                         VerticalLayout {
-                            visible: root.page == 3;
-                            height: root.page == 3 ? self.preferred-height : 0;
+                            visible: root.page == 4;
+                            height: root.page == 4 ? self.preferred-height : 0;
                             spacing: 14px;
-                            Text { text: "STEP 4 OF 5"; color: Brand.cool; font-size: 12px; font-weight: 600; letter-spacing: 1.4px; }
+                            Text { text: "STEP 5 OF 6"; color: Brand.cool; font-size: 12px; font-weight: 600; letter-spacing: 1.4px; }
                             Text { text: "Ready to install"; color: Brand.text; font-size: 32px; font-weight: 800; letter-spacing: -0.8px; }
                             Rectangle {
                                 border-radius: 10px;
@@ -705,25 +805,25 @@ export component InstallerWindow inherits Window {
                             }
                         }
 
-                        // Pages 4-6: installing, done, failed
+                        // Pages 5-7: installing, done, failed
                         VerticalLayout {
-                            visible: root.page >= 4;
-                            height: root.page >= 4 ? self.preferred-height : 0;
+                            visible: root.page >= 5;
+                            height: root.page >= 5 ? self.preferred-height : 0;
                             spacing: 14px;
                             Text {
-                                text: root.page == 4 ? "STEP 5 OF 5" : root.page == 5 ? "ALL DONE" : "SOMETHING WENT WRONG";
-                                color: root.page == 6 ? Brand.danger : root.page == 5 ? Brand.success : Brand.cool;
+                                text: root.page == 5 ? "STEP 6 OF 6" : root.page == 6 ? "ALL DONE" : "SOMETHING WENT WRONG";
+                                color: root.page == 7 ? Brand.danger : root.page == 6 ? Brand.success : Brand.cool;
                                 font-size: 12px; font-weight: 600; letter-spacing: 1.4px;
                             }
                             Text {
-                                text: root.page == 4 ? "Installing renner.dev OS" : root.page == 5 ? "renner.dev OS is ready" : "The install did not finish";
+                                text: root.page == 5 ? "Installing renner.dev OS" : root.page == 6 ? "renner.dev OS is ready" : "The install did not finish";
                                 color: Brand.text; font-size: 32px; font-weight: 800; letter-spacing: -0.8px;
                             }
                             Text {
-                                text: root.page == 4 ? root.stage-text
-                                    : root.page == 5 ? "Remove the install medium, then restart into your new system."
+                                text: root.page == 5 ? root.stage-text
+                                    : root.page == 6 ? "Remove the install medium, then restart into your new system."
                                     : root.error-text;
-                                color: root.page == 6 ? Brand.danger : Brand.muted;
+                                color: root.page == 7 ? Brand.danger : Brand.muted;
                                 font-size: 16px;
                                 wrap: word-wrap;
                             }
@@ -738,7 +838,7 @@ export component InstallerWindow inherits Window {
                                         x: 0;
                                         width: parent.width * root.progress;
                                         border-radius: 4px;
-                                        background: root.page == 6 ? Brand.danger : Brand.meter;
+                                        background: root.page == 7 ? Brand.danger : Brand.meter;
                                         animate width { duration: 320ms; easing: ease-out; }
                                     }
                                 }
@@ -773,23 +873,23 @@ export component InstallerWindow inherits Window {
                         Rectangle { vertical-stretch: 1; }
 
                         Text {
-                            text: root.page < 4 ? root.error-text : "";
+                            text: root.page < 5 ? root.error-text : "";
                             color: Brand.danger;
                             font-size: 14px;
                             wrap: word-wrap;
                         }
-                        Rectangle { height: root.page < 4 && root.error-text != "" ? 12px : 0; }
+                        Rectangle { height: root.page < 5 && root.error-text != "" ? 12px : 0; }
 
                         // Navigation
                         HorizontalLayout {
                             spacing: 14px;
                             alignment: end;
-                            height: root.page == 4 || root.page == 6 ? 0 : 52px;
-                            visible: root.page != 4 && root.page != 6;
+                            height: root.page == 5 || root.page == 7 ? 0 : 52px;
+                            visible: root.page != 5 && root.page != 7;
                             SecondaryButton {
                                 text: "Back";
-                                visible: root.page >= 1 && root.page <= 3;
-                                width: root.page >= 1 && root.page <= 3 ? self.min-width : 0;
+                                visible: root.page >= 1 && root.page <= 4;
+                                width: root.page >= 1 && root.page <= 4 ? self.min-width : 0;
                                 clicked => { root.go-back(); }
                             }
                             // One button per kind of step (RO-29): when a click
@@ -799,21 +899,21 @@ export component InstallerWindow inherits Window {
                             // swallow the next one.
                             next-button := PrimaryButton {
                                 text: "Next";
-                                visible: root.page <= 2;
-                                width: root.page <= 2 ? self.min-width : 0;
-                                enabled: root.page != 1 || root.disk-index >= 0;
+                                visible: root.page <= 3;
+                                width: root.page <= 3 ? self.min-width : 0;
+                                enabled: (root.page != 1 || root.online) && (root.page != 2 || root.disk-index >= 0);
                                 clicked => { root.go-next(); }
                             }
                             install-button := PrimaryButton {
                                 text: "Erase disk and install";
-                                visible: root.page == 3;
-                                width: root.page == 3 ? 240px : 0;
+                                visible: root.page == 4;
+                                width: root.page == 4 ? 240px : 0;
                                 clicked => { root.go-next(); }
                             }
                             restart-button := PrimaryButton {
                                 text: "Restart now";
-                                visible: root.page == 5;
-                                width: root.page == 5 ? self.min-width : 0;
+                                visible: root.page == 6;
+                                width: root.page == 6 ? self.min-width : 0;
                                 clicked => { root.go-next(); }
                             }
                         }
@@ -841,7 +941,7 @@ export component InstallerWindow inherits Window {
             font-size: 12px;
         }
 
-        if root.osk-visible && root.page == 2: OnScreenKeyboard {
+        if root.osk-visible && (root.page == 1 || root.page == 3): OnScreenKeyboard {
             x: 0;
             y: root.height - self.height;
             width: root.width;
@@ -851,7 +951,8 @@ export component InstallerWindow inherits Window {
                 if (root.osk-target == 0) { user-field.cursor-to-end(); }
                 else if (root.osk-target == 1) { host-field.cursor-to-end(); }
                 else if (root.osk-target == 2) { pass-field.cursor-to-end(); }
-                else { pass2-field.cursor-to-end(); }
+                else if (root.osk-target == 3) { pass2-field.cursor-to-end(); }
+                else { wifi-field.cursor-to-end(); }
             }
             done => { root.osk-visible = false; }
         }

@@ -3,8 +3,8 @@
 #
 # archiso runs this on tty1 right after the automatic root login, because the
 # renner boot entry passes script=/run/archiso/bootmnt/renner/autostart.sh.
-# It waits for the network, then hands over to bootstrap.sh with the
-# installer and the system files from the ISO itself (no download of either).
+# It hands over to bootstrap.sh with the installer, its libraries and the
+# system files from the ISO itself, so it starts without a network.
 #
 # Optional kernel command line parameters (set by patch-iso.sh):
 #   renner.mirror=URL   pacman mirror base, e.g. a local package cache
@@ -39,31 +39,11 @@ if [[ -n $mirror ]]; then
 fi
 
 clear
-printf '\n  \033[1mrenner\033[0m\033[38;5;208m.dev\033[0m OS installer\n\n  Waiting for the network...\n'
-# Online means: a default route, and the mirror's host name resolves.
-host=geo.mirror.pkgbuild.com
-[[ -n $mirror ]] && host=$(sed -E 's#^[a-z]+://([^/:]+).*#\1#' <<<"$mirror")
-online=0
-for _ in $(seq 1 60); do
-    if ip route show default 2>/dev/null | grep -q . && getent ahosts "$host" >/dev/null; then
-        online=1
-        break
-    fi
-    sleep 1
-done
-if ((!online)); then
-    cat <<'EOF'
+printf '\n  \033[1mrenner\033[0m\033[38;5;208m.dev\033[0m OS installer is starting...\n'
 
-  No network connection.
-
-  Plug in a network cable, or connect to Wi-Fi:
-      iwctl station wlan0 connect "<network name>"
-  Then type:  renner-install
-
-EOF
-    exit 0
-fi
-
+# No waiting for the network: the installer's own Network page handles it,
+# and its libraries come from the ISO (pkgs/).
+export RENNER_PKGS="$MEDIA/pkgs"
 export RENNER_INSTALLER_URL="file://$MEDIA/renner-installer"
 export RENNER_SOURCE="$source"
 [[ $serial == 1 ]] && export RENNER_SERIAL_CONSOLE=1

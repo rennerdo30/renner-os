@@ -75,6 +75,7 @@ pub fn script_args(plan: &Plan) -> Vec<String> {
         ("--timezone", &c.system.timezone),
         ("--locale", &c.system.locale),
         ("--keymap", &c.system.keymap),
+        ("--xkb-layout", &c.system.xkb_layout),
         ("--source", &c.options.source),
     ]
     .iter()

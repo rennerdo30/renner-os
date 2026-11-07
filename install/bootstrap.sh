@@ -12,6 +12,8 @@
 # Environment (lab and testing):
 #   RENNER_INSTALLER_URL  where the installer binary is (a .sha256 must sit next to it)
 #   RENNER_SOURCE         passed on: where install/ and system/ come from
+#   RENNER_PKGS           a folder with the libraries as package files (the
+#                         patched ISO), so no network is needed to start
 set -Eeuo pipefail
 
 INSTALLER_URL=${RENNER_INSTALLER_URL:-}
@@ -26,8 +28,13 @@ die() { printf '\033[31mrenner-bootstrap: %s\033[0m\n' "$*" >&2; exit 1; }
 
 say "Preparing the live system"
 systemctl start pacman-init.service || die "the ISO's package keyring could not be set up"
-pacman -Sy --noconfirm --needed libinput libxkbcommon fontconfig >/dev/null \
-    || die "could not add the installer's libraries to the live system"
+if [[ -n ${RENNER_PKGS:-} && -d $RENNER_PKGS ]]; then
+    pacman -U --noconfirm --needed "$RENNER_PKGS"/*.pkg.tar.* >/dev/null \
+        || die "could not add the installer's libraries from $RENNER_PKGS"
+else
+    pacman -Sy --noconfirm --needed libinput libxkbcommon fontconfig >/dev/null \
+        || die "could not add the installer's libraries to the live system"
+fi
 
 say "Downloading renner-installer"
 curl -fsSL --retry 2 -o "$BIN.part" "$INSTALLER_URL" || die "download failed: $INSTALLER_URL"

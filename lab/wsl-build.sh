@@ -37,6 +37,7 @@ for step in "${steps[@]}"; do
             ;;
         iso)
             iso=$(ls "$LAB"/isos/archlinux-*-x86_64.iso | sort | tail -1)
+            pacman -Sy >/dev/null   # the package lists patch-iso.sh resolves against
             echo "==> patching $(basename "$iso")"
             bash "$REPO/iso/patch-iso.sh" --iso "$iso" --installer "$ART/renner-installer" \
                 --out "$HOME/renner-os-lab.iso" --mirror http://10.0.2.2:8079 --serial-console

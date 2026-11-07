@@ -25,6 +25,7 @@ hostname = "renner"            # 1-63 letters, digits or hyphens
 timezone = "Europe/Berlin"     # default UTC
 locale = "en_US.UTF-8"         # default en_US.UTF-8
 keymap = "de"                  # console keymap, default us
+xkb_layout = "de"              # desktop and login screen keyboard (XKB), default us
 
 [user]
 name = "alex"                  # lowercase; becomes an administrator

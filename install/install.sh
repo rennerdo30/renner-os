@@ -17,13 +17,16 @@
 #   --password-hash HASH  crypt(3) hash instead of a password (renner-installer)
 #   --no-desktop     console system only, no Plasma or GPU drivers
 #   --timezone ZONE (UTC)  --locale LOCALE (en_US.UTF-8)  --keymap MAP (us)
+#   --xkb-layout LAYOUT (us): keyboard of the desktop and the login screen
+#   A Wi-Fi network joined in the installer (/tmp/renner-wifi: name, then
+#   password) is set up in NetworkManager on the new system.
 #   --source URL     where install/ and system/ are fetched from
 #   --serial-console add console=ttyS0 (test VMs)
 #   --yes            do not ask before erasing the disk
 set -Eeuo pipefail
 
 SOURCE=${RENNER_SOURCE:-https://raw.githubusercontent.com/rennerdo30/renner-os/main}
-DISK="" HOSTNAME_="" USERNAME="" PASSWORD="" PASSWORD_HASH="" TIMEZONE=UTC LOCALE=en_US.UTF-8 KEYMAP=us
+DISK="" HOSTNAME_="" USERNAME="" PASSWORD="" PASSWORD_HASH="" TIMEZONE=UTC LOCALE=en_US.UTF-8 KEYMAP=us XKB_LAYOUT=us
 SERIAL=0 ASSUME_YES=0 DESKTOP=1
 LOG=/tmp/renner-install.log
 TARGET=/mnt
@@ -120,6 +123,7 @@ parse_args() {
             --timezone) TIMEZONE=$2; shift ;;
             --locale) LOCALE=$2; shift ;;
             --keymap) KEYMAP=$2; shift ;;
+            --xkb-layout) XKB_LAYOUT=$2; shift ;;
             --source) SOURCE=$2; shift ;;
             --serial-console) SERIAL=1 ;;
             --yes) ASSUME_YES=1 ;;
@@ -353,6 +357,11 @@ EOF
     sed -i "s/^#\($LOCALE \)/\1/" "$TARGET/etc/locale.gen"
     echo "LANG=$LOCALE" >"$TARGET/etc/locale.conf"
     echo "KEYMAP=$KEYMAP" >"$TARGET/etc/vconsole.conf"
+    # KWin and SDDM take the keyboard from here (what localectl writes).
+    install -d "$TARGET/etc/X11/xorg.conf.d"
+    printf 'Section "InputClass"\n    Identifier "system-keyboard"\n    MatchIsKeyboard "on"\n    Option "XkbLayout" "%s"\nEndSection\n' \
+        "$XKB_LAYOUT" >"$TARGET/etc/X11/xorg.conf.d/00-keyboard.conf"
+    copy_wifi
     arch-chroot "$TARGET" locale-gen >/dev/null
     arch-chroot "$TARGET" hwclock --systohc
 
@@ -432,6 +441,21 @@ run_stages() {  # everything that changes the disk; leaves the target mounted
     configure_system
     setup_boot
     complete_deployment
+}
+
+# The Wi-Fi network joined in the installer, for NetworkManager.
+copy_wifi() {
+    [[ -f /tmp/renner-wifi ]] || return 0
+    local ssid psk file
+    { IFS= read -r ssid; IFS= read -r psk; } </tmp/renner-wifi
+    [[ -n $ssid ]] || return 0
+    file="$TARGET/etc/NetworkManager/system-connections/${ssid//\//_}.nmconnection"
+    install -d -m 700 "$(dirname "$file")"
+    {
+        printf '[connection]\nid=%s\ntype=wifi\n\n[wifi]\nmode=infrastructure\nssid=%s\n\n' "$ssid" "$ssid"
+        [[ -n $psk ]] && printf '[wifi-security]\nkey-mgmt=wpa-psk\npsk=%s\n\n' "$psk"
+        printf '[ipv4]\nmethod=auto\n\n[ipv6]\nmethod=auto\n'
+    } | install -m 600 /dev/stdin "$file"
 }
 
 main() {

@@ -83,6 +83,8 @@ export WINEPREFIX=$prefix
 export STEAM_COMPAT_DATA_PATH=$compat
 export STEAM_COMPAT_CLIENT_INSTALL_PATH=$DATA/renner-os/steam-client
 export SteamAppId=${SteamAppId:-0} SteamGameId=${SteamGameId:-0}
+# GE-Proton's accessibility helper (Xalia) only logs errors on a desktop.
+export PROTON_USE_XALIA=${PROTON_USE_XALIA:-0}
 run_proton() { "$proton/proton" run "$@"; }
 log=$LOG_DIR/$(slug "$stem").log
 : >"$log"
