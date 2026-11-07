@@ -1,5 +1,5 @@
 #!/bin/bash
-# renner.dev OS: one look, no theme zoo (owner, 2026-11-08: "remove the default
+# renner.dev OS: one look, no theme zoo, no developer clutter in the menu (owner, 2026-11-08: "remove the default
 # plasma themes like breeze"). Runs after install and as a pacman hook after
 # every update that brings the files back.
 #
@@ -30,5 +30,12 @@ rm -f "$ROOT"/usr/share/color-schemes/Breeze*.colors "$ROOT"/usr/share/color-sch
 rm -rf "$ROOT/usr/share/plasma/desktoptheme/breeze-dark" "$ROOT/usr/share/plasma/desktoptheme/breeze-light"
 for wp in "$ROOT"/usr/share/wallpapers/*; do
     [[ -e $wp && $(basename "$wp") != renner ]] && rm -rf "$wp"
+done
+# Developer and test tools that come in as dependencies stay installed but out
+# of the start menu and search (owner, 2026-11-08: "developer clutter").
+for app in assistant designer linguist qdbusviewer qv4l2 qvidcap lstopo            kdesystemsettings org.kde.kmenuedit; do
+    f=$ROOT/usr/share/applications/$app.desktop
+    [[ -f $f ]] || continue
+    grep -q '^NoDisplay=true' "$f" || sed -i '0,/^\[Desktop Entry\]/s//[Desktop Entry]\nNoDisplay=true/' "$f"
 done
 exit 0

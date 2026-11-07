@@ -62,4 +62,6 @@ check "renner splash"           "dev.renner"     sh -c 'cat /usr/share/renner-os
 check "only renner colors"      "^RennerDark.colors *$" sh -c 'ls /usr/share/color-schemes/'
 check "defaults in the image"    "renner-os/xdg"  cat /usr/lib/environment.d/40-renner-xdg.conf
 check "app colors defined"      "Colors:View"    grep -o Colors:View /usr/share/renner-os/xdg/kdeglobals
+check "dev tools out of the menu" "^2 *$"    sh -c 'grep -l ^NoDisplay=true /usr/share/applications/linguist.desktop /usr/share/applications/qdbusviewer.desktop | wc -l'
+check "start: Windows key"      "Alt\+F1"     sh -c 'grep -h -A1 "\[Shortcuts\]" /home/tom/.config/plasma-org.kde.plasma.desktop-appletsrc'
 exit $failed

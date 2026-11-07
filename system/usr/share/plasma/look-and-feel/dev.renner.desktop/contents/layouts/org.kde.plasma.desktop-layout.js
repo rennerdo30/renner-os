@@ -16,7 +16,11 @@ panel.lengthMode = "fill";
 
 // renner.dev Start: search first, pinned and all apps below (its pinned list
 // is in its own configuration, see dev.renner.start/contents/config/main.xml).
-panel.addWidget("dev.renner.start");
+var start = panel.addWidget("dev.renner.start");
+// The Windows key reaches only a launcher with a global shortcut (Plasma
+// gives Kickoff Alt+F1 the same way).
+start.currentConfigGroup = ["Shortcuts"];
+start.writeConfig("global", "Alt+F1");
 
 var tasks = panel.addWidget("org.kde.plasma.icontasks");
 tasks.currentConfigGroup = ["General"];

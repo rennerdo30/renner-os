@@ -6,6 +6,7 @@ Target = usr/share/plasma/look-and-feel/*
 Target = usr/share/color-schemes/*
 Target = usr/share/plasma/desktoptheme/*
 Target = usr/share/wallpapers/*
+Target = usr/share/applications/*
 
 [Action]
 Description = renner.dev OS: keeping one look (removing the stock KDE themes)...

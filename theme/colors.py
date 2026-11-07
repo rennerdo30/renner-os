@@ -44,6 +44,9 @@ HIDDEN_SETTINGS = [
     "kcm_kgamma", "kcm_device_automounter", "kcm_solid_actions", "kcm_desktoppaths",
     "kcm_webshortcuts", "kcm_kamera", "kcm_workspace", "kcm_keys", "kcm_updates",
     "kcm_filetypes", "kcm_fonts", "kcm_kwinsupportinfo", "kcm_virtualkeyboard",
+    # The "Quick settings" start page offers stock KDE themes and pages hidden
+    # above; Settings opens on its first real page instead.
+    "kcm_landingpage",
 ]
 
 

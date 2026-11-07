@@ -22,7 +22,7 @@ python theme/manifest.py >/dev/null
 # Theme-related parts of system/ (the rest needs a real update).
 tar --force-local -C system -cf "$ART/theme.tar" \
     usr/share/plasma usr/share/color-schemes usr/share/icons usr/share/wallpapers \
-    usr/share/renner-os/xdg
+    usr/share/renner-os/xdg usr/lib/renner-os/trim-themes usr/share/libalpm/hooks/90-renner-trim-themes.hook
 # Only /usr: /etc is an overlay whose lower layer must not change while it is
 # mounted (writing there broke every app's colors in the lab, 2026-11-08).
 python lab/lab.py cache status | grep -q "running pid" || python lab/lab.py cache up --minutes 120 >/dev/null

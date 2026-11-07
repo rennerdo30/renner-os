@@ -21,7 +21,7 @@ open() {  # open NAME COMMAND...: start it in the session, screenshot, close it
     L exec $VM -- "${AS[@]}" systemctl --user stop "look-$name.service" >/dev/null 2>&1
     sleep 1
 }
-L exec $VM -- "${AS[@]}" dbus-send --session --dest=org.kde.plasmashell /PlasmaShell org.kde.PlasmaShell.activateLauncherMenu
+L key $VM meta_l >/dev/null   # the real Windows key (the D-Bus call is not the same)
 sleep 2; L shot $VM "$S/L-start.png" >/dev/null && echo "$S/L-start.png"
 L key $VM esc >/dev/null; sleep 1
 open dolphin dolphin
