@@ -307,7 +307,9 @@ def cmd_up(a) -> None:
         "-smp", str(a.cpus), "-m", a.mem,
         "-drive", f"if=none,id=hd0,format=qcow2,file={d / 'disk.qcow2'}",
         "-device", "virtio-blk-pci,drive=hd0,bootindex=1",
-        "-device", "virtio-vga",
+        # --gl: virgl passes the guest's OpenGL to the host GPU through the SDL
+        # window's GL context; plain virtio-vga renders in software (llvmpipe).
+        "-device", "virtio-vga-gl" if a.gl else "virtio-vga",
         "-device", "qemu-xhci", "-device", "usb-tablet",
         "-nic", "user,model=virtio-net-pci",
         "-audiodev", "none,id=snd0",
@@ -323,9 +325,12 @@ def cmd_up(a) -> None:
         "-chardev", f"socket,id=qga,host=127.0.0.1,port={qga_port(state)},server=on,wait=off",
         "-device", "virtserialport,chardev=qga,name=org.qemu.guest_agent.0",
         "-serial", f"file:{d / 'serial.log'}",
-        "-vnc", f"127.0.0.1:{state['vnc_display']}",
-        "-display", "sdl" if a.window else "none",
+        "-display", ("sdl,gl=on" if a.gl else "sdl") if a.window else "none",
     ]
+    if not a.gl:  # QEMU refuses VNC next to a GL display
+        args += ["-vnc", f"127.0.0.1:{state['vnc_display']}"]
+    if a.gl and not a.window:
+        sys.exit("lab: --gl needs --window (virgl renders through the SDL window's GL context)")
     if not a.bios:  # UEFI (OVMF); without these drives QEMU boots SeaBIOS
         args += ["-drive", f"if=pflash,format=raw,readonly=on,file={QEMU_DIR / 'share/edk2-x86_64-code.fd'}",
                  "-drive", f"if=pflash,format=qcow2,file={d / 'efivars.qcow2'}"]
@@ -393,7 +398,8 @@ def cmd_up(a) -> None:
             send_keys(q, ["ret"])
             q.close()
     print(f"up: {a.name} pid={pid} limit={a.minutes} min "
-          f"vnc=127.0.0.1:{5900 + state['vnc_display']} qmp={state['qmp_port']}")
+          + ("gl=virgl " if a.gl else f"vnc=127.0.0.1:{5900 + state['vnc_display']} ")
+          + f"qmp={state['qmp_port']}")
 
 
 def quit_vm(name: str, state: dict) -> None:
@@ -780,6 +786,9 @@ def main() -> None:
     s.add_argument("--no-cache", action="store_true", help="don't start the package cache")
     s.add_argument("--no-enter", action="store_true", help="don't press Enter at the boot menu")
     s.add_argument("--bios", action="store_true", help="legacy BIOS (SeaBIOS) instead of UEFI")
+    s.add_argument("--gl", action="store_true",
+                   help="3D acceleration (virgl: guest OpenGL on the host GPU; needs --window). "
+                        "No Vulkan; automated tests stay on software rendering")
     s.set_defaults(f=cmd_up)
     s = sub.add_parser("down"); s.add_argument("name"); s.set_defaults(f=cmd_down)
     s = sub.add_parser("status"); s.set_defaults(f=cmd_status)
