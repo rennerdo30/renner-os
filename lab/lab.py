@@ -300,8 +300,10 @@ def cmd_up(a) -> None:
     if running(state):
         sys.exit(f"lab: VM '{a.name}' already runs (pid {state['pid']})")
     d = vm_dir(a.name)
+    if a.venus:
+        a.gl = True
     args = [
-        qemu_bin("qemu-system-x86_64"),
+        str(Path(a.qemu) / "qemu-system-x86_64.exe") if a.qemu else qemu_bin("qemu-system-x86_64"),
         "-name", f"renneros-{a.name}",
         "-machine", "q35", "-accel", "whpx", "-cpu", "host",
         "-smp", str(a.cpus), "-m", a.mem,
@@ -309,7 +311,11 @@ def cmd_up(a) -> None:
         "-device", "virtio-blk-pci,drive=hd0,bootindex=1",
         # --gl: virgl passes the guest's OpenGL to the host GPU through the SDL
         # window's GL context; plain virtio-vga renders in software (llvmpipe).
-        "-device", "virtio-vga-gl" if a.gl else "virtio-vga",
+        # --venus: Vulkan through virtio-gpu (needs blob resources and host
+        # memory); upstream QEMU has it only on Linux hosts, so it takes a
+        # QEMU build with Venus on Windows (--qemu).
+        "-device", ("virtio-vga-gl,blob=on,hostmem=4G,venus=on" if a.venus
+                    else "virtio-vga-gl" if a.gl else "virtio-vga"),
         "-device", "qemu-xhci", "-device", "usb-tablet",
         "-nic", "user,model=virtio-net-pci",
         "-audiodev", "none,id=snd0",
@@ -391,10 +397,15 @@ def cmd_up(a) -> None:
         # systemd-boot's countdown does not run under WHPX (ISO and installed
         # system alike), so pick the default entry ourselves. The menu shows up
         # after a varying delay (slower with a visible window), so press Enter
-        # every 3 s for 30 s; later presses only add an empty line at a prompt.
+        # every 3 s for 30 s. Stop as soon as the guest agent has opened its
+        # port: the system is up, and a later Enter would be an empty password
+        # at the login screen (three lock the account; owner, 2026-11-14).
         for _ in range(10):
             time.sleep(3)
             q = Qmp(state["qmp_port"])
+            if any(c["label"] == "qga" and c.get("frontend-open") for c in q.cmd("query-chardev")):
+                q.close()
+                break
             send_keys(q, ["ret"])
             q.close()
     print(f"up: {a.name} pid={pid} limit={a.minutes} min "
@@ -550,6 +561,10 @@ def cmd_exec(a) -> None:
             if time.time() >= end:
                 sys.exit(f"lab: guest agent not reachable: {e}")
             time.sleep(3)
+    # Guest output is UTF-8 (pacman prints ✔); a Windows console code page
+    # cannot encode all of it.
+    for stream in (sys.stdout, sys.stderr):
+        stream.reconfigure(errors="replace")
     sys.stdout.write(out)
     sys.stderr.write(err)
     sys.exit(code)
@@ -789,6 +804,9 @@ def main() -> None:
     s.add_argument("--gl", action="store_true",
                    help="3D acceleration (virgl: guest OpenGL on the host GPU; needs --window). "
                         "No Vulkan; automated tests stay on software rendering")
+    s.add_argument("--venus", action="store_true",
+                   help="Vulkan through Venus (implies --gl); needs a QEMU with Venus on Windows (--qemu)")
+    s.add_argument("--qemu", metavar="DIR", help="other QEMU build (folder with qemu-system-x86_64.exe)")
     s.set_defaults(f=cmd_up)
     s = sub.add_parser("down"); s.add_argument("name"); s.set_defaults(f=cmd_down)
     s = sub.add_parser("status"); s.set_defaults(f=cmd_status)
