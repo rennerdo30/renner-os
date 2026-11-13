@@ -10,6 +10,7 @@ usr/lib/environment.d/40-renner-xdg.conf
 usr/lib/initcpio/install/renner-etc-overlay
 usr/lib/modules-load.d/renner-ntsync.conf
 usr/lib/renner-os/activate
+usr/lib/renner-os/apply-style
 usr/lib/renner-os/apps-finish
 usr/lib/renner-os/boot-health
 usr/lib/renner-os/brand
@@ -40,6 +41,7 @@ usr/share/icons/hicolor/256x256/apps/renner-launcher.png
 usr/share/icons/hicolor/scalable/apps/kwil.svg
 usr/share/icons/hicolor/scalable/apps/renner-start.svg
 usr/share/kio/servicemenus/renner-exe.desktop
+usr/share/kxmlgui5/dolphin/dolphinui.rc
 usr/share/libalpm/hooks/80-renner-brand.hook
 usr/share/libalpm/hooks/90-renner-trim-themes.hook
 usr/share/plasma/desktoptheme/renner/dialogs/background.svg
@@ -69,6 +71,7 @@ usr/share/renner-os/issue
 usr/share/renner-os/os-release
 usr/share/renner-os/xdg/breezerc
 usr/share/renner-os/xdg/darklyrc
+usr/share/renner-os/xdg/dolphinrc
 usr/share/renner-os/xdg/kdeglobals
 usr/share/renner-os/xdg/kscreenlockerrc
 usr/share/renner-os/xdg/ksplashrc

@@ -1,3 +1,4 @@
+
 # renner.dev OS: the Darkly widget style and window frames (RO-4), set to the
 # renner.dev look. Colors come from the RennerDark color scheme.
 [Common]
@@ -9,6 +10,15 @@ FancyMargins=true
 
 [Style]
 AnimationsDuration=180
+# Calm, roomy controls (owner, 2026-11-14: "dolphin ... like from aliexpress"):
+# no underlined mnemonics, no focus frames on idle fields, taller rows.
+MnemonicsMode=MN_NEVER
+ViewDrawFocusIndicator=false
+LineEditFocusAnimation=false
+ButtonHeight=6
+MenuItemHeight=8
+TabsHeight=6
+ToolBarDrawItemSeparator=false
 MenuOpacity=100
 ToolBarOpacity=100
 MenuBarOpacity=100
@@ -16,12 +26,17 @@ TabBarOpacity=100
 TabDrawHighlight=true
 TabUseHighlightColor=true
 NewDolphinSelectionStyle=true
-DisableDolphinUrlNavigatorBackground=true
+DisableDolphinUrlNavigatorBackground=false
 ViewDrawTreeBranchLines=false
 SidePanelDrawFrame=false
+DockWidgetDrawFrame=false
+TitleWidgetDrawFrame=false
 MenuItemDrawStrongFocus=true
 WindowDragMode=WD_MINIMAL
 
 [Windeco]
 TitleAlignment=AlignLeft
+DrawTitleBarSeparator=false
 DrawBorderOnMaximizedWindows=false
+DrawBackgroundGradient=false
+ButtonSize=ButtonDefault

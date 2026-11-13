@@ -1,0 +1,18 @@
+#!/bin/sh
+# renner.dev OS: the Darkly look when Darkly is installed (else Breeze stays):
+# widget style and window frames in the image's defaults; Darkly's own settings
+# apps are hidden. Used by the installer and by lab/theme-push.sh.
+#   apply-style [ROOT]
+set -eu
+root=${1:-}
+xdg=$root/usr/share/renner-os/xdg
+[ -e "$root/usr/lib/qt6/plugins/styles/darkly6.so" ] || exit 0
+sed -i 's/^widgetStyle=Breeze$/widgetStyle=Darkly/' "$xdg/kdeglobals"
+sed -i 's/^library=org.kde.breeze$/library=org.kde.darkly/; s/^theme=Breeze$/theme=Darkly/' "$xdg/kwinrc"
+# The global theme's defaults win over the image defaults: Plasma copies them
+# to ~/.config/kdedefaults, first in XDG_CONFIG_DIRS (Darkly never showed
+# while they said Breeze).
+lnf=$root/usr/share/plasma/look-and-feel/dev.renner.desktop/contents/defaults
+sed -i 's/^widgetStyle=Breeze$/widgetStyle=Darkly/; s/^library=org.kde.breeze$/library=org.kde.darkly/; s/^theme=Breeze$/theme=Darkly/' "$lnf"
+rm -f "$root/usr/share/applications/darklystyleconfig.desktop" \
+      "$root/usr/share/applications/kcm_darklydecoration.desktop"

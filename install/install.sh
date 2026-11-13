@@ -432,12 +432,7 @@ EOF
     fi
     # The Darkly look when Darkly is installed (else Breeze stays): widget style
     # and window frames; its own settings app is hidden from the menu.
-    if [[ -e $TARGET/usr/lib/qt6/plugins/styles/darkly6.so ]]; then
-        sed -i 's/^widgetStyle=Breeze$/widgetStyle=Darkly/' "$TARGET/usr/share/renner-os/xdg/kdeglobals"
-        sed -i 's/^library=org.kde.breeze$/library=org.kde.darkly/; s/^theme=Breeze$/theme=Darkly/' "$TARGET/usr/share/renner-os/xdg/kwinrc"
-        rm -f "$TARGET/usr/share/applications/darklystyleconfig.desktop" \
-              "$TARGET/usr/share/applications/kcm_darklydecoration.desktop"
-    fi
+    "$TARGET/usr/lib/renner-os/apply-style" "$TARGET" || die "could not apply the Darkly style"
     # One look: the stock KDE themes go (the pacman hook repeats this on updates).
     if ((DESKTOP)); then arch-chroot "$TARGET" /usr/lib/renner-os/trim-themes || die "could not trim the KDE themes"; fi
     # Finishes Flatpak apps the installer could not (it does nothing otherwise).

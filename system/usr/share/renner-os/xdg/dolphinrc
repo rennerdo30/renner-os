@@ -1,0 +1,23 @@
+# renner.dev OS: Dolphin defaults (owner, 2026-11-14: "how can we make
+# dolphin not look like from aliexpress?"). Calm window: no status bar, no tab
+# memory, medium icons, home as start.
+[General]
+ShowStatusBar=Disabled
+ShowZoomSlider=false
+RememberOpenedTabs=false
+ShowSelectionToggle=false
+ShowFullPath=false
+BrowseThroughArchives=true
+
+[IconsMode]
+IconSize=48
+PreviewSize=48
+TextWidthIndex=1
+
+[KFileDialog Settings]
+Places Icons Auto-resize=false
+Places Icons Static Size=16
+
+[MainWindow]
+MenuBar=Disabled
+ToolBarsMovable=Disabled
