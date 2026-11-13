@@ -31,6 +31,7 @@ import json
 import os
 import re
 import secrets
+import shlex
 import socket
 import subprocess
 import sys
@@ -335,6 +336,7 @@ def cmd_up(a) -> None:
     ]
     if not a.gl:  # QEMU refuses VNC next to a GL display
         args += ["-vnc", f"127.0.0.1:{state['vnc_display']}"]
+    args += shlex.split(a.qemu_args)
     if a.gl and not a.window:
         sys.exit("lab: --gl needs --window (virgl renders through the SDL window's GL context)")
     if not a.bios:  # UEFI (OVMF); without these drives QEMU boots SeaBIOS
@@ -807,6 +809,8 @@ def main() -> None:
     s.add_argument("--venus", action="store_true",
                    help="Vulkan through Venus (implies --gl); needs a QEMU with Venus on Windows (--qemu)")
     s.add_argument("--qemu", metavar="DIR", help="other QEMU build (folder with qemu-system-x86_64.exe)")
+    s.add_argument("--qemu-args", default="", metavar="ARGS",
+                   help="extra QEMU arguments, e.g. '-d guest_errors' (debugging)")
     s.set_defaults(f=cmd_up)
     s = sub.add_parser("down"); s.add_argument("name"); s.set_defaults(f=cmd_down)
     s = sub.add_parser("status"); s.set_defaults(f=cmd_status)
