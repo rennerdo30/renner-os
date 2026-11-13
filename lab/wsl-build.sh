@@ -37,6 +37,14 @@ for step in "${steps[@]}"; do
             (cd "$ART" && sha256sum renner-installer >renner-installer.sha256)
             echo "    $(cut -c1-16 "$ART/renner-installer.sha256")...  $ART/renner-installer"
             ;;
+        bench)
+            echo "==> renner-bench (Linux)"
+            pacman -Sy --needed --noconfirm cmake ninja gcc sdl2-compat vulkan-headers vulkan-icd-loader shaderc >/dev/null
+            cmake -S "$REPO/bench" -B "$HOME/build/renner-bench" -G Ninja -DCMAKE_BUILD_TYPE=Release >/dev/null
+            ninja -C "$HOME/build/renner-bench"
+            install -m 755 "$HOME/build/renner-bench/renner-bench" "$ART/renner-bench"
+            echo "    $ART/renner-bench"
+            ;;
         iso)
             iso=$(ls "$LAB"/isos/archlinux-*-x86_64.iso | sort | tail -1)
             pacman -Sy >/dev/null   # the package lists patch-iso.sh resolves against
