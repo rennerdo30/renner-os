@@ -75,8 +75,12 @@ GROUPS = {
     "Colors:Header][Inactive": group(SURFACE, SURFACE),
     "Colors:Tooltip": group(RAISED, SURFACE),
     "Colors:Complementary": group(BG, SURFACE),
-    "Colors:Selection": {**group(ACCENT, ACCENT_SOFT, foreground=INK),
-                         "ForegroundInactive": INK, "ForegroundActive": INK},
+    # Selected rows are pale accent pills (our style fork), so selected text
+    # and symbolic icons stay light; the style picks dark ink itself on full
+    # accent fills such as the default button (2026-11-14: dark icons on the
+    # pill with INK here).
+    "Colors:Selection": {**group(ACCENT, ACCENT_SOFT, foreground=TEXT),
+                         "ForegroundInactive": TEXT, "ForegroundActive": TEXT},
 }
 WM = {
     "activeBackground": RAISED, "activeForeground": TEXT, "activeBlend": RAISED,
@@ -119,7 +123,9 @@ def main() -> None:
             "toolBarFont": "Inter,9,-1,5,400,0,0,0,0,0,0,0,0,0,0,1",
             "smallestReadableFont": "Inter,8,-1,5,400,0,0,0,0,0,0,0,0,0,0,1",
             "fixed": "JetBrains Mono,10,-1,5,400,0,0,0,0,0,0,0,0,0,0,1",
-            "AccentColor": ACCENT,
+            # No AccentColor: it switches on Plasma's accent mode, which writes
+            # its own darkened selection colors (182,89,24, white text) over
+            # RennerDark's #ff7a1a with dark ink (2026-11-14).
             "BrowserApplication": "com.google.Chrome.desktop",
         },
         "WM": {**WM, "activeFont": "Inter,10,-1,5,600,0,0,0,0,0,0,0,0,0,0,1"},

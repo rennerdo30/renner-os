@@ -11,12 +11,14 @@ FancyMargins=true
 [Style]
 AnimationsDuration=180
 # Calm, roomy controls (owner, 2026-11-14: "dolphin ... like from aliexpress"):
-# no underlined mnemonics, no focus frames on idle fields, taller rows.
+# no underlined mnemonics, no focus frames on idle fields. Our style fork
+# (rennerdo30/Darkly, branch renner) sets 32 px minimum rows, buttons and
+# menu items; the heights below only add a little on top.
 MnemonicsMode=MN_NEVER
 ViewDrawFocusIndicator=false
 LineEditFocusAnimation=false
-ButtonHeight=6
-MenuItemHeight=8
+ButtonHeight=1
+MenuItemHeight=4
 TabsHeight=6
 ToolBarDrawItemSeparator=false
 MenuOpacity=100
@@ -25,13 +27,11 @@ MenuBarOpacity=100
 TabBarOpacity=100
 TabDrawHighlight=true
 TabUseHighlightColor=true
-NewDolphinSelectionStyle=true
 DisableDolphinUrlNavigatorBackground=false
 ViewDrawTreeBranchLines=false
 SidePanelDrawFrame=false
 DockWidgetDrawFrame=false
 TitleWidgetDrawFrame=false
-MenuItemDrawStrongFocus=true
 WindowDragMode=WD_MINIMAL
 
 [Windeco]

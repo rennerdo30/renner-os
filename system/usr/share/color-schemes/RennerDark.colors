@@ -124,9 +124,9 @@ DecorationHover=255,162,76
 [Colors:Selection]
 BackgroundNormal=255,122,26
 BackgroundAlternate=255,162,76
-ForegroundNormal=28,18,7
-ForegroundInactive=28,18,7
-ForegroundActive=28,18,7
+ForegroundNormal=247,248,251
+ForegroundInactive=247,248,251
+ForegroundActive=247,248,251
 ForegroundLink=45,226,240
 ForegroundVisited=125,211,252
 ForegroundNegative=255,92,122

@@ -5,7 +5,6 @@ menuFont=Inter,10,-1,5,400,0,0,0,0,0,0,0,0,0,0,1
 toolBarFont=Inter,9,-1,5,400,0,0,0,0,0,0,0,0,0,0,1
 smallestReadableFont=Inter,8,-1,5,400,0,0,0,0,0,0,0,0,0,0,1
 fixed=JetBrains Mono,10,-1,5,400,0,0,0,0,0,0,0,0,0,0,1
-AccentColor=255,122,26
 BrowserApplication=com.google.Chrome.desktop
 
 [WM]
@@ -147,9 +146,9 @@ DecorationHover=255,162,76
 [Colors:Selection]
 BackgroundNormal=255,122,26
 BackgroundAlternate=255,162,76
-ForegroundNormal=28,18,7
-ForegroundInactive=28,18,7
-ForegroundActive=28,18,7
+ForegroundNormal=247,248,251
+ForegroundInactive=247,248,251
+ForegroundActive=247,248,251
 ForegroundLink=45,226,240
 ForegroundVisited=125,211,252
 ForegroundNegative=255,92,122
