@@ -26,8 +26,12 @@ VIRGL_LOG_LEVEL=info VIRGL_LOG_FILE="$LAB/vms/$VM/virgl.log" \
     >/dev/null || fail "VM did not start"
 VM=$VM bash lab/login.sh >/dev/null || fail "login"
 X sh -c 'vulkaninfo --summary 2>&1 | grep -m1 deviceName'
-T=$((SECS + 30)) X sh -c "u=\$(id -u tom); w=\$(ls /run/user/\$u | grep -m1 '^wayland-[0-9]\$');
-    runuser -u tom -- env XDG_RUNTIME_DIR=/run/user/\$u WAYLAND_DISPLAY=\$w sh -c 'cd /tmp; timeout $SECS vkcube --wsi wayland >/tmp/vk.log 2>&1; echo vkcube-rc=\$?'"
+# In the desktop session like a user start (AGENTS.md): systemd-run --user
+# gets the session's environment; the window shows in the VM window.
+U() { X sh -c "u=\$(id -u tom); runuser -u tom -- env XDG_RUNTIME_DIR=/run/user/\$u DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/\$u/bus $*"; }
+U systemd-run --user --unit=lab-vkcube --collect -p RuntimeMaxSec=$SECS vkcube --wsi wayland >/dev/null 2>&1
+sleep $((SECS + 2))
+U journalctl --user -u lab-vkcube -o cat --no-pager 2>/dev/null | grep -v "^$" | tail -4
 if X true >/dev/null 2>&1; then
     echo "qemu: responsive"
 else
