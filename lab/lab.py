@@ -41,6 +41,9 @@ from pathlib import Path
 
 LAB = Path(os.environ.get("RENNER_LAB_DIR", "E:/AgentData/renneros-lab"))
 QEMU_DIR = LAB / "qemu"
+# Our QEMU build (rennerdo30/winq-emu-qemu: Venus on Windows, no Windows power
+# throttling), the lab default; --stock-qemu uses QEMU_DIR instead.
+OUR_QEMU = Path(os.environ.get("RENNER_QEMU", "E:/AgentData/winq-build/bin"))
 VMS = LAB / "vms"
 ISOS = LAB / "isos"
 CACHE_STATE = LAB / "pkgcache.json"
@@ -301,6 +304,13 @@ def cmd_up(a) -> None:
     if running(state):
         sys.exit(f"lab: VM '{a.name}' already runs (pid {state['pid']})")
     d = vm_dir(a.name)
+    # Default: our QEMU, and with a window Vulkan through Venus (the installed
+    # system; the installer ISO keeps plain graphics, the lab drives it by
+    # screenshots, which a GL display does not give).
+    if not a.qemu and not a.stock_qemu and (OUR_QEMU / "qemu-system-x86_64.exe").exists():
+        a.qemu = str(OUR_QEMU)
+        if a.window and not a.iso and not a.no_gl:
+            a.venus = True
     if a.venus:
         a.gl = True
     args = [
@@ -808,7 +818,10 @@ def main() -> None:
                         "No Vulkan; automated tests stay on software rendering")
     s.add_argument("--venus", action="store_true",
                    help="Vulkan through Venus (implies --gl); needs a QEMU with Venus on Windows (--qemu)")
-    s.add_argument("--qemu", metavar="DIR", help="other QEMU build (folder with qemu-system-x86_64.exe)")
+    s.add_argument("--qemu", metavar="DIR", help="other QEMU build (folder with qemu-system-x86_64.exe); "
+                   "default: our build in RENNER_QEMU (E:/AgentData/winq-build/bin) with Venus")
+    s.add_argument("--stock-qemu", action="store_true", help=f"the stock QEMU in {QEMU_DIR}, not our build")
+    s.add_argument("--no-gl", action="store_true", help="our QEMU without Venus/virgl (plain virtio-vga)")
     s.add_argument("--qemu-args", default="", metavar="ARGS",
                    help="extra QEMU arguments, e.g. '-d guest_errors' (debugging)")
     s.set_defaults(f=cmd_up)

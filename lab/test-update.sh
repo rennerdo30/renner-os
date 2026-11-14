@@ -34,7 +34,7 @@ before_ver=$(version)
 echo "booted before: $before, renner-os $before_ver"
 [[ $before_ver != "$next_ver" ]] || fail "the VM already has renner-os $next_ver"
 X grep -q '^Server = http://10.0.2.2:8079/artifacts/repo' /etc/pacman.conf || fail "pacman.conf does not use the lab repository"
-X systemctl is-enabled -q renner-update.timer || fail "renner-update.timer is not enabled"
+X systemctl is-active -q renner-update.timer || fail "renner-update.timer is not running"  # enabled by the package (vendor .wants link)
 
 out=$(X renner-update check | tr -d '\r')
 grep -q '^renner-os ' <<<"$out" && fail "an update is listed before the repository has one: $out"

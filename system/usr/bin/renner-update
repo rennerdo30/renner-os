@@ -122,6 +122,7 @@ pending() {  # available updates for deployment $1, one "name old -> new" per li
     # Exit 1: nothing to update; exit 2: the package lists could not be loaded.
     local db rc=0
     db=$(mktemp -d /run/renner-update-check.XXXXXX)
+    chmod 755 "$db"   # pacman downloads as its own unprivileged user (DownloadUser)
     ln -s "$TOP/@deployments/$1/usr/lib/sysimage/pacman/local" "$db/local"
     cp -a "$TOP/@deployments/$1/usr/lib/sysimage/pacman/sync" "$db/" 2>/dev/null || true
     if ! pacman -Sy --dbpath "$db" --logfile /dev/null >/dev/null; then
