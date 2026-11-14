@@ -319,7 +319,9 @@ def cmd_up(a) -> None:
         "-machine", "q35", "-accel", "whpx", "-cpu", "host",
         "-smp", str(a.cpus), "-m", a.mem,
         "-drive", f"if=none,id=hd0,format=qcow2,file={d / 'disk.qcow2'}",
-        "-device", "virtio-blk-pci,drive=hd0,bootindex=1",
+        # --nvme: Windows guests (inbox driver; virtio-blk needs viostor during setup)
+        "-device", ("nvme,drive=hd0,serial=renner-hd0,bootindex=1" if a.nvme
+                    else "virtio-blk-pci,drive=hd0,bootindex=1"),
         # --gl: virgl passes the guest's OpenGL to the host GPU through the SDL
         # window's GL context; plain virtio-vga renders in software (llvmpipe).
         # --venus: Vulkan through virtio-gpu (needs blob resources and host
@@ -813,6 +815,7 @@ def main() -> None:
     s.add_argument("--no-cache", action="store_true", help="don't start the package cache")
     s.add_argument("--no-enter", action="store_true", help="don't press Enter at the boot menu")
     s.add_argument("--bios", action="store_true", help="legacy BIOS (SeaBIOS) instead of UEFI")
+    s.add_argument("--nvme", action="store_true", help="NVMe disk instead of virtio-blk (Windows guests)")
     s.add_argument("--gl", action="store_true",
                    help="3D acceleration (virgl: guest OpenGL on the host GPU; needs --window). "
                         "No Vulkan; automated tests stay on software rendering")
