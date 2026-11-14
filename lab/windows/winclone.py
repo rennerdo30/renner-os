@@ -24,6 +24,7 @@ from __future__ import annotations
 import argparse
 import base64
 import json
+import re
 import secrets
 import shutil
 import socket
@@ -227,13 +228,18 @@ def start_task(ag: Agent, cmd: str, elevated: bool) -> str:
     run = f"@echo off\r\n{cmd}\r\n"
     body = (f"@echo off\r\ncd /d {GUEST_DIR}\r\ncall {GUEST_DIR}\\{rid}.run.cmd > {GUEST_DIR}\\{rid}.out 2>&1\r\n"
             f">{GUEST_DIR}\\{rid}.rc echo %ERRORLEVEL%\r\n")
+    # Started through wscript with window style 0: no console window on tom's
+    # desktop (it would show in screenshots and screen captures).
+    hidden = f'CreateObject("WScript.Shell").Run "cmd.exe /c {GUEST_DIR}\\{rid}.cmd", 0, True\r\n'
     level = "Highest" if elevated else "Limited"
     code, out = ag.ps(f"""
 $b = [Convert]::FromBase64String('{base64.b64encode(run.encode()).decode()}')
 [IO.File]::WriteAllBytes('{GUEST_DIR}\\{rid}.run.cmd', $b)
 $b = [Convert]::FromBase64String('{base64.b64encode(body.encode()).decode()}')
 [IO.File]::WriteAllBytes('{GUEST_DIR}\\{rid}.cmd', $b)
-$a = New-ScheduledTaskAction -Execute '{GUEST_DIR}\\{rid}.cmd'
+$b = [Convert]::FromBase64String('{base64.b64encode(hidden.encode()).decode()}')
+[IO.File]::WriteAllBytes('{GUEST_DIR}\\{rid}.vbs', $b)
+$a = New-ScheduledTaskAction -Execute 'wscript.exe' -Argument '//B //Nologo {GUEST_DIR}\\{rid}.vbs'
 $p = New-ScheduledTaskPrincipal -UserId {USER} -LogonType Interactive -RunLevel {level}
 $s = New-ScheduledTaskSettingsSet -ExecutionTimeLimit (New-TimeSpan -Hours 12) -AllowStartIfOnBatteries
 Register-ScheduledTask -TaskName winclone-{rid} -Action $a -Principal $p -Settings $s -Force | Out-Null
@@ -283,11 +289,17 @@ def cmd_exec_background(a) -> None:
     ag = agent(a.vm)
     rid = start_task(ag, cmd, a.elevated)
     ag.close()
-    print(f"started {rid}; output: {GUEST_DIR}\\{rid}.out (winclone.py log {rid})")
+    print(rid)  # first line: the id alone, for scripts
+    print(f"output: {GUEST_DIR}\\{rid}.out (winclone.py log {rid})")
 
 
 def cmd_log(a) -> None:
+    if not re.fullmatch(r"\d{6}-[0-9a-f]{4}", a.id):
+        die(f"'{a.id}' is not a run id (exec-background prints it on its first line)")
     ag = agent(a.vm)
+    code, _ = ag.ps(f"if (-not (Test-Path '{GUEST_DIR}\\{a.id}.cmd')) {{ exit 3 }}")
+    if code == 3:
+        die(f"no run {a.id} in this clone")
     _, out = ag.ps(f"Get-Content -Raw '{GUEST_DIR}\\{a.id}.out' -ErrorAction SilentlyContinue; "
                    f"$rc = Get-Content -Raw '{GUEST_DIR}\\{a.id}.rc' -ErrorAction SilentlyContinue; "
                    f"if ($rc) {{ \"[exited: $($rc.Trim())]\" }} else {{ '[running]' }}")
