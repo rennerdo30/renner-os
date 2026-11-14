@@ -63,8 +63,11 @@ State (2026-11-14, RO-14): `packages/build-repo.sh` builds the repo in our WSL
 distro with an ed25519 key that never leaves it; the public key ships in
 `renner-os` (`/usr/share/pacman/keyrings/`). Packages: `renner-os` (all of
 `system/`, version `0.r<commits>.g<hash>`) and `renner-style` (our Darkly fork,
-replaces `darkly`). The repo sits before `[core]` in `pacman.conf`. Until it is
-published (GitHub release `repo`, owner's yes), only lab VMs reach it.
+replaces `darkly`). The repo sits before `[core]` in `pacman.conf`. It is
+published as the assets of the GitHub release `repo` (first on 2026-11-14 with
+the owner's yes; `packages/publish-repo.sh`, every publication needs that yes).
+The signing key exists only in the `renneros-build` WSL distro: losing it
+means a new key that every installed system must be given (backup open).
 
 ### Install script (step 1)
 
