@@ -52,7 +52,7 @@ def die(msg: str, code: int = 1):
 class Agent:
     """QEMU guest agent connection (commands run as SYSTEM in session 0)."""
 
-    def __init__(self, name: str, timeout: float = 10):
+    def __init__(self, name: str, timeout: float = 30):
         state = L.load_state(name)
         self.s = socket.create_connection(("127.0.0.1", L.qga_port(state)), timeout=timeout)
         self.buf = b""
@@ -116,6 +116,7 @@ def ensure_vm(name: str) -> None:
     if (d / "vm.json").exists():
         return
     d.mkdir(parents=True, exist_ok=True)
+    (d / "winclone").write_text("disk.qcow2 is a throwaway overlay\n")
     taken = {json.loads((p / "vm.json").read_text())["qmp_port"]
              for p in L.VMS.iterdir() if (p / "vm.json").exists()}
     index = next(i for i in range(100) if L.QMP_PORT_BASE + i not in taken)
@@ -134,6 +135,7 @@ def cmd_start(a) -> None:
     if not base.exists() or not efivars.exists():
         die(f"no base image in {BASE_DIR}")
     ensure_vm(a.vm)
+    own_clone(a.vm)
     if L.running(L.load_state(a.vm)):
         die(f"'{a.vm}' already runs; stop it first")
     t0 = time.time()
@@ -149,6 +151,8 @@ def cmd_start(a) -> None:
     up += [f"--hostfwd=tcp:127.0.0.1:{h}-:{g}" for g, h in FORWARDS.items()]
     if a.no_gpu:
         up.append("--no-gl")
+    if a.qemu_args:
+        up.append(f"--qemu-args={a.qemu_args}")
     r = subprocess.run(up, timeout=300)
     if r.returncode:
         die("lab.py up failed")
@@ -244,7 +248,13 @@ def cmd_exec(a) -> None:
     cmd = read_command(a)
     ag = agent(a.vm)
     if a.system:  # SYSTEM in session 0 (no desktop), straight through the guest agent
-        code, out = ag.run(["cmd.exe", "/c", cmd], a.timeout)
+        # From a batch file: the guest agent escapes quotes in arguments
+        # (\"), which cmd.exe does not understand.
+        rid = time.strftime("%H%M%S") + "-" + secrets.token_hex(2)
+        bat = rf"{GUEST_DIR}\{rid}.sys.cmd"
+        ag.ps(f"New-Item -ItemType Directory -Force {GUEST_DIR} | Out-Null; [IO.File]::WriteAllBytes('{bat}', "
+              f"[Convert]::FromBase64String('{base64.b64encode(f'@echo off{chr(13)}{chr(10)}{cmd}{chr(13)}{chr(10)}'.encode()).decode()}'))")
+        code, out = ag.run(["cmd.exe", "/c", bat], a.timeout)
         sys.stdout.write(out)
         sys.exit(code)
     rid = start_task(ag, cmd, a.elevated)
@@ -288,6 +298,7 @@ def cmd_log(a) -> None:
 
 def cmd_stop(a) -> None:
     ensure_vm(a.vm)
+    own_clone(a.vm)
     state = L.load_state(a.vm)
     L.quit_vm(a.vm, state)
     if L.running(state):
@@ -295,9 +306,27 @@ def cmd_stop(a) -> None:
     state["pid"] = None
     L.save_state(a.vm, state)
     d = L.vm_dir(a.vm)
+    # QEMU can hold the files for a moment after its process ended.
+    end = time.time() + 30
     for f in ("disk.qcow2", "efivars.qcow2"):
-        (d / f).unlink(missing_ok=True)
+        while True:
+            try:
+                (d / f).unlink(missing_ok=True)
+                break
+            except PermissionError:
+                if time.time() >= end:
+                    die(f"{d / f} still in use after 30 s; the next start replaces it")
+                time.sleep(1)
     print(f"stop: '{a.vm}' stopped, changes discarded")
+
+
+def own_clone(name: str) -> None:
+    """start and stop delete the VM's disk: only for clones this tool made."""
+    d = L.vm_dir(name)
+    if not (d / "winclone").exists():
+        if name != "remora":  # made before the marker existed
+            die(f"'{name}' is not a winclone VM; refusing to replace its disk")
+        (d / "winclone").write_text("disk.qcow2 is a throwaway overlay\n")
 
 
 def cmd_status(a) -> None:
@@ -319,6 +348,7 @@ def main() -> None:
     s.add_argument("--mem", default="6G"); s.add_argument("--cpus", type=int, default=4)
     s.add_argument("--no-gpu", action="store_true", help="plain virtio-vga instead of Vulkan/D3D through Venus")
     s.add_argument("--timeout", type=float, default=300, help="wait this long for the desktop")
+    s.add_argument("--qemu-args", default="", help="extra QEMU arguments (debugging)")
     s.set_defaults(f=cmd_start)
     s = sub.add_parser("push"); s.add_argument("local"); s.add_argument("guest", nargs="?")
     s.set_defaults(f=cmd_push)
@@ -334,7 +364,11 @@ def main() -> None:
     for name, f in (("addr", cmd_addr), ("stop", cmd_stop), ("status", cmd_status)):
         sub.add_parser(name).set_defaults(f=f)
     a = p.parse_args()
-    a.f(a)
+    try:
+        a.f(a)
+    except (TimeoutError, ConnectionError) as e:
+        die(f"the guest agent stopped answering ({e}); the guest may hang. "
+            "Screenshot: lab.py shot <vm>; then stop", 125)
 
 
 if __name__ == "__main__":
