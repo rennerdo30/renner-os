@@ -349,9 +349,10 @@ install_system_files() {
     say "Installing renner.dev OS components"
     local k medium=""
     # The repository key, trusted before the first download from it.
-    for k in renner-os.gpg renner-os-trusted renner-os-revoked; do
+    for k in renner-os.gpg renner-os-trusted; do
         install -Dm644 "$STAGING/usr/share/pacman/keyrings/$k" "$TARGET/usr/share/pacman/keyrings/$k"
     done
+    : >"$TARGET/usr/share/pacman/keyrings/renner-os-revoked"   # empty (curl may skip empty files)
     arch-chroot "$TARGET" pacman-key --populate renner-os >/dev/null || die "could not add the renner-os repository key"
     if [[ -f $LOCAL_REPO/renner-os.db ]]; then
         install -d "$TARGET/var/tmp/renner-repo"
