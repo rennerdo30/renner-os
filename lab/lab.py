@@ -487,7 +487,16 @@ def cmd_shot(a) -> None:
     shots = vm_dir(a.name) / "shots"
     shots.mkdir(exist_ok=True)
     out = Path(a.out) if a.out else shots / time.strftime("%Y%m%d-%H%M%S.png")
-    q.cmd("screendump", filename=str(out.resolve()), format="png")
+    try:
+        q.cmd("screendump", filename=str(out.resolve()), format="png")
+    except RuntimeError as e:
+        if "libpng" not in str(e):  # our QEMU build has no libpng: PPM, then convert
+            raise
+        ppm = out.with_suffix(".ppm")
+        q.cmd("screendump", filename=str(ppm.resolve()))
+        from PIL import Image
+        Image.open(ppm).save(out)
+        ppm.unlink()
     q.close()
     print(out.resolve())
 
