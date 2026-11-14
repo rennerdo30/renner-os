@@ -14,6 +14,10 @@ on:
         description: Publish to the release "repo" (installed systems get it)
         type: boolean
         default: false
+      rebuild:
+        description: Rebuild packages already in the release (test run only, never published)
+        type: boolean
+        default: false
 
 permissions:
   contents: write
@@ -56,9 +60,15 @@ jobs:
           done
           ls -la
       - name: Build and sign
-        run: bash packages/build-repo.sh
+        env:
+          RENNER_REBUILD: ${{ inputs.rebuild && '1' || '' }}
+        run: |
+          if [ -n "$RENNER_REBUILD" ] && [ "${{ inputs.publish }}" = true ]; then
+            echo "rebuild is for test runs: a rebuilt package must not replace a published one" >&2; exit 1
+          fi
+          bash packages/build-repo.sh
       - name: Keyring unchanged
-        run: git diff --exit-code -- system/usr/share/pacman/keyrings
+        run: git -c safe.directory="$GITHUB_WORKSPACE" diff --exit-code -- system/usr/share/pacman/keyrings
       - uses: actions/upload-artifact@v4
         with:
           name: repo
