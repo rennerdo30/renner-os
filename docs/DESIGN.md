@@ -66,8 +66,12 @@ distro with an ed25519 key that never leaves it; the public key ships in
 replaces `darkly`). The repo sits before `[core]` in `pacman.conf`. It is
 published as the assets of the GitHub release `repo` (first on 2026-11-14 with
 the owner's yes; `packages/publish-repo.sh`, every publication needs that yes).
-The signing key exists only in the `renneros-build` WSL distro: losing it
-means a new key that every installed system must be given (backup open).
+The signing key is in the `renneros-build` WSL distro and in the GitHub secret
+`RENNER_REPO_SIGNING_KEY` (owner, 2026-11-14). The workflow *Repository*
+(`.github/workflows/repo.yml`, started by hand) builds and signs with it, reuses
+packages already published, refuses a key other than the trusted one, and
+publishes only when "publish" is ticked. A secret cannot be read back, so CI
+stays able to sign even if the WSL distro is lost.
 
 ### Install script (step 1)
 

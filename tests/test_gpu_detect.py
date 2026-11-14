@@ -118,12 +118,20 @@ class GpuDetectTest(unittest.TestCase):
         for pkg in ("vulkan-intel", "nvidia-open", "switcheroo-control", "nvidia-prime"):
             self.assertIn(pkg, p["packages"])
 
-    def test_virtual_gpu_gets_generic_mesa(self):
+    def test_virtio_gpu_gets_venus(self):
         self.add_device(0x1AF4, VIRTIO_GPU, boot_vga=1)
+        code, p = self.run_detect()
+        self.assertEqual((code, p["RENNER_GPU_VENDORS"]), (0, "virtio"))
+        for pkg in ("mesa", "vulkan-virtio", "lib32-vulkan-virtio"):
+            self.assertIn(pkg, p["packages"])
+        self.assertNotIn("vulkan-radeon", p["packages"])
+
+    def test_unknown_virtual_gpu_gets_generic_mesa(self):
+        self.add_device(0x15AD, 0x0405, boot_vga=1)  # VMware SVGA II
         code, p = self.run_detect()
         self.assertEqual((code, p["RENNER_GPU_VENDORS"]), (0, "other"))
         self.assertIn("mesa", p["packages"])
-        self.assertNotIn("vulkan-radeon", p["packages"])
+        self.assertNotIn("vulkan-virtio", p["packages"])
 
 
 if __name__ == "__main__":

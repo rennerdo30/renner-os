@@ -4,7 +4,7 @@
 Reads PCI display devices from sysfs and prints the profile the installer
 (and later a boot check) acts on:
 
-  RENNER_GPU_VENDORS         amd,intel,nvidia,other (sorted, comma-separated)
+  RENNER_GPU_VENDORS         amd,intel,nvidia,virtio,other (sorted, comma-separated)
   RENNER_GPU_NVIDIA_DRIVER   open | legacy-580 | nouveau | none
   RENNER_GPU_MULTI           1 when more than one GPU is present (PRIME, switcheroo)
   RENNER_GPU_PACKAGES        driver packages to install (space-separated)
@@ -35,7 +35,7 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 
 DEFAULT_SYSFS = "/sys/bus/pci/devices"
-VENDORS = {0x1002: "amd", 0x8086: "intel", 0x10DE: "nvidia"}
+VENDORS = {0x1002: "amd", 0x8086: "intel", 0x10DE: "nvidia", 0x1AF4: "virtio"}
 PCI_CLASS_DISPLAY = 0x03
 
 NVIDIA_TURING_FIRST = 0x1E00
@@ -45,6 +45,9 @@ BASE = ["mesa", "lib32-mesa", "vulkan-icd-loader", "lib32-vulkan-icd-loader"]
 PER_DRIVER = {
     "amd": ["vulkan-radeon", "lib32-vulkan-radeon"],
     "intel": ["vulkan-intel", "lib32-vulkan-intel", "intel-media-driver"],
+    # virtio-gpu (QEMU): Vulkan through Venus. Without it, the first package
+    # that provides vulkan-driver (nvidia-utils) came in with Steam (2026-11-14).
+    "virtio": ["vulkan-virtio", "lib32-vulkan-virtio"],
     "open": ["nvidia-open", "nvidia-utils", "lib32-nvidia-utils", "nvidia-settings"],
     "nouveau": ["vulkan-nouveau", "lib32-vulkan-nouveau"],
     # legacy-580: nvidia-580xx-dkms from the renner-os repo (not available yet);
@@ -105,7 +108,7 @@ def classify(gpus: list[Gpu]) -> dict[str, str]:
     for gpu in gpus:
         if gpu.vendor == "nvidia":
             gpu.driver = nvidia_driver(gpu.device_id)
-        elif gpu.vendor in ("amd", "intel"):
+        elif gpu.vendor in ("amd", "intel", "virtio"):
             gpu.driver = gpu.vendor
         else:
             gpu.driver = "mesa"  # virtual or unknown GPUs: generic mesa drivers
