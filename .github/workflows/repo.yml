@@ -1,0 +1,68 @@
+# Builds and signs the renner-os pacman repository (packages/build-repo.sh) and,
+# when "publish" is ticked, publishes it as the release "repo" that installed
+# systems update from. Started by hand only: every publication is the owner's yes.
+#
+# The signing key comes from the secret RENNER_REPO_SIGNING_KEY (armored secret
+# key, fingerprint in system/usr/share/pacman/keyrings/renner-os-trusted).
+# Packages already in the release are reused, so only new versions are built.
+name: Repository
+
+on:
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: Publish to the release "repo" (installed systems get it)
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+concurrency:
+  group: repo
+  cancel-in-progress: false
+
+jobs:
+  repo:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    container: archlinux:base-devel
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      RENNER_REPO_OUT: ${{ github.workspace }}/out
+      RENNER_REPO_GNUPGHOME: /root/.renner-repo-gnupg
+      RENNER_REPO_KEY_REQUIRED: 1
+    steps:
+      - name: Tools
+        run: pacman -Syu --noconfirm --needed git github-cli gnupg python
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - name: Signing key
+        env:
+          KEY: ${{ secrets.RENNER_REPO_SIGNING_KEY }}
+        run: |
+          [ -n "$KEY" ] || { echo "secret RENNER_REPO_SIGNING_KEY is not set" >&2; exit 1; }
+          install -d -m 700 "$RENNER_REPO_GNUPGHOME"
+          printf '%s\n' "$KEY" | GNUPGHOME=$RENNER_REPO_GNUPGHOME gpg --batch --import 2>&1 | grep -v '^gpg: key' || true
+      - name: Current repository
+        run: |
+          mkdir -p out && cd out
+          gh release download repo --pattern '*' || true
+          # repo-add works on the .tar.gz names; the release holds plain copies.
+          for d in db files; do
+            if [ -f renner-os.$d ]; then cp renner-os.$d renner-os.$d.tar.gz; fi
+          done
+          ls -la
+      - name: Build and sign
+        run: bash packages/build-repo.sh
+      - name: Keyring unchanged
+        run: git diff --exit-code -- system/usr/share/pacman/keyrings
+      - uses: actions/upload-artifact@v4
+        with:
+          name: repo
+          path: out/
+      - name: Publish
+        if: inputs.publish
+        run: bash packages/publish-repo.sh out

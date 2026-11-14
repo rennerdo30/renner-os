@@ -10,10 +10,11 @@
 # get it as http://10.0.2.2:8079/artifacts/repo; it is published as a GitHub
 # release only with the owner's yes.
 #
-# The signing key lives in this distro only ($GNUPGHOME, made on the first
-# run, never printed or copied out); its public half is written to
-# system/usr/share/pacman/keyrings/. RENNER_PKGREL raises the release number
-# (lab: a newer build of the same commit).
+# The signing key lives in $GNUPGHOME (WSL: made on the first run) and in the
+# GitHub secret RENNER_REPO_SIGNING_KEY for .github/workflows/repo.yml, which
+# imports it and sets RENNER_REPO_KEY_REQUIRED; it is never printed. Its public
+# half is written to system/usr/share/pacman/keyrings/. RENNER_PKGREL raises
+# the release number (lab: a newer build of the same commit).
 set -Eeuo pipefail
 REPO=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 OUT=${RENNER_REPO_OUT:-/mnt/e/AgentData/renneros-lab/artifacts/repo}
@@ -32,11 +33,16 @@ pacman -Syu --noconfirm --needed base-devel git gnupg python >/dev/null  # never
 
 install -d -m 700 "$GNUPGHOME"
 if ! gpg --batch --list-secret-keys "$KEY_UID" >/dev/null 2>&1; then
+    # CI imports the key from a secret: a missing key there is an error, never a new key.
+    [[ -z ${RENNER_REPO_KEY_REQUIRED:-} ]] || { echo "no signing key in $GNUPGHOME" >&2; exit 1; }
     say "Creating the repository signing key"
     gpg --batch --pinentry-mode loopback --passphrase '' \
         --quick-generate-key "$KEY_UID" ed25519 sign never 2>/dev/null
 fi
 FPR=$(gpg --batch --with-colons --list-secret-keys "$KEY_UID" | awk -F: '$1 == "fpr" { print $10; exit }')
+# Installed systems trust one key: signing with another would break every update.
+trusted=$(cut -d: -f1 "$KEYRING/renner-os-trusted" 2>/dev/null || true)
+[[ -z $trusted || $trusted == "$FPR" ]] || { echo "signing key $FPR is not the trusted key $trusted" >&2; exit 1; }
 mkdir -p "$KEYRING"
 gpg --batch --export "$FPR" >"$KEYRING/renner-os.gpg"
 echo "$FPR:4:" >"$KEYRING/renner-os-trusted"
