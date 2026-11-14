@@ -330,7 +330,8 @@ def cmd_up(a) -> None:
         "-device", ("virtio-vga-gl,blob=on,hostmem=4G,venus=on" if a.venus
                     else "virtio-vga-gl" if a.gl else "virtio-vga"),
         "-device", "qemu-xhci", "-device", "usb-tablet",
-        "-nic", "user,model=virtio-net-pci",
+        # --hostfwd: host ports into the guest, e.g. tcp:127.0.0.1:13390-:3390
+        "-nic", "user,model=virtio-net-pci" + "".join(f",hostfwd={h}" for h in a.hostfwd),
         "-audiodev", "none,id=snd0",
         # A guest-triggered warm reset hangs under WHPX, so a guest reboot ends
         # QEMU instead; `lab.py up` then does a cold boot.
@@ -834,6 +835,8 @@ def main() -> None:
                    "default: our build in RENNER_QEMU (E:/AgentData/winq-build/bin) with Venus")
     s.add_argument("--stock-qemu", action="store_true", help=f"the stock QEMU in {QEMU_DIR}, not our build")
     s.add_argument("--no-gl", action="store_true", help="our QEMU without Venus/virgl (plain virtio-vga)")
+    s.add_argument("--hostfwd", action="append", default=[], metavar="RULE",
+                   help="forward a host port into the guest (QEMU hostfwd), e.g. tcp:127.0.0.1:13390-:3390")
     s.add_argument("--qemu-args", default="", metavar="ARGS",
                    help="extra QEMU arguments, e.g. '-d guest_errors' (debugging)")
     s.set_defaults(f=cmd_up)
