@@ -9,19 +9,17 @@
 #              serial console) into artifacts/renner-os-lab.iso
 #
 # The repo is read from /mnt/e; the cargo target dir stays on the Linux disk (fast),
-# compiler output is cached by sccache under E:/sccache/renneros-wsl.
+# so rebuilds are incremental.
 set -Eeuo pipefail
 
 REPO=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 LAB=/mnt/e/AgentData/renneros-lab
 ART=$LAB/artifacts
 export CARGO_TARGET_DIR=$HOME/target/renner-installer
-export RUSTC_WRAPPER=sccache SCCACHE_DIR=/mnt/e/sccache/renneros-wsl
-# Own port: the default 4226 can be taken by another sccache (WSL shares the
-# host network); a foreign server answered with a broken reply (2026-11-14).
-export SCCACHE_SERVER_PORT=4236
-sccache rustc -vV >/dev/null 2>&1 || { echo "    sccache not working; building without it"; unset RUSTC_WRAPPER; }
-mkdir -p "$ART" "$SCCACHE_DIR"
+# No sccache: after the toolchain upgrade (rust 1.99, sccache 0.19) its server
+# broke every cargo call (2026-11-14); the target dir on the Linux disk keeps
+# incremental builds fast enough.
+mkdir -p "$ART"
 
 steps=("$@")
 ((${#steps[@]})) || steps=(repo installer iso)
