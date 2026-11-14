@@ -17,6 +17,10 @@ LAB=/mnt/e/AgentData/renneros-lab
 ART=$LAB/artifacts
 export CARGO_TARGET_DIR=$HOME/target/renner-installer
 export RUSTC_WRAPPER=sccache SCCACHE_DIR=/mnt/e/sccache/renneros-wsl
+# Own port: the default 4226 can be taken by another sccache (WSL shares the
+# host network); a foreign server answered with a broken reply (2026-11-14).
+export SCCACHE_SERVER_PORT=4236
+sccache rustc -vV >/dev/null 2>&1 || { echo "    sccache not working; building without it"; unset RUSTC_WRAPPER; }
 mkdir -p "$ART" "$SCCACHE_DIR"
 
 steps=("$@")
