@@ -1,8 +1,10 @@
 #!/bin/sh
 # renner.dev OS: notification for an update waiting for a restart
 # (renner-update-notify.service). "Restart now" opens Plasma's restart dialog.
+# It stays on screen until clicked: Plasma hides normal notifications after a
+# few seconds, and this one was gone before anyone saw it (2026-11-14).
 action=$(notify-send --app-name="renner.dev OS" --icon=system-software-update \
-    --urgency=normal --wait --action=restart="Restart now" --action=later="Later" \
+    --urgency=normal --expire-time=0 --wait --action=restart="Restart now" --action=later="Later" \
     "Update ready" "Restart your PC to finish the update. Your files and apps stay as they are.")
 [ "$action" = restart ] || exit 0
 dbus-send --session --type=method_call --dest=org.kde.LogoutPrompt /LogoutPrompt \

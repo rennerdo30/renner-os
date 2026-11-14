@@ -39,7 +39,7 @@ U next; page 4; L shot $VM $S/I4-summary.png >/dev/null
 U next; page 5; L shot $VM $S/I5-installing.png >/dev/null
 page 6 2400; L shot $VM $S/I6-done.png >/dev/null
 grep -ao "RENNER-INSTALL-RC=[0-9]*" $SER
-U next                               # Restart now
+L ui $VM next >/dev/null || true     # Restart now (QEMU ends on the reboot, often before the reply)
 for i in $(seq 1 60); do L status | grep -q "$VM: stopped" && break; sleep 2; done
 rm -f $SER; L up $VM --window --minutes 30 >/dev/null || fail "VM did not start after the install"; sleep 40
 VM=$VM bash lab/login.sh tom pw1 || fail "login as tom"
