@@ -154,6 +154,8 @@ def cmd_start(a) -> None:
         up.append("--no-gl")
     if a.qemu_args:
         up.append(f"--qemu-args={a.qemu_args}")
+    if a.qemu:  # another QEMU build (tests); Venus has to be asked for then
+        up += ["--qemu", a.qemu] + ([] if a.no_gpu else ["--venus"])
     r = subprocess.run(up, timeout=300)
     if r.returncode:
         die("lab.py up failed")
@@ -361,6 +363,7 @@ def main() -> None:
     s.add_argument("--no-gpu", action="store_true", help="plain virtio-vga instead of Vulkan/D3D through Venus")
     s.add_argument("--timeout", type=float, default=300, help="wait this long for the desktop")
     s.add_argument("--qemu-args", default="", help="extra QEMU arguments (debugging)")
+    s.add_argument("--qemu", metavar="DIR", help="other QEMU build folder (test builds)")
     s.set_defaults(f=cmd_start)
     s = sub.add_parser("push"); s.add_argument("local"); s.add_argument("guest", nargs="?")
     s.set_defaults(f=cmd_push)

@@ -159,6 +159,41 @@ def place_window(pid: int, wait: float = 15.0) -> str:
     return "no window found"
 
 
+def cmd_window(a) -> None:
+    """PNG of the VM's own window (PrintWindow): what the owner sees, also in GL mode,
+    where QMP screendump has no surface. Never grabs the screen around it."""
+    from ctypes import wintypes
+    from PIL import Image
+    state = load_state(a.name)
+    if not running(state):
+        sys.exit(f"lab: VM '{a.name}' is not running")
+    wins = _windows_of(state["pid"])
+    if not wins:
+        sys.exit("lab: the VM has no window (started without --window?)")
+    u, g = ctypes.windll.user32, ctypes.windll.gdi32
+    r = wintypes.RECT()
+    u.GetClientRect(wins[0], ctypes.byref(r))
+    w, h = r.right, r.bottom
+    hdc = u.GetDC(wins[0])
+    mdc = g.CreateCompatibleDC(hdc)
+    bmp = g.CreateCompatibleBitmap(hdc, w, h)
+    g.SelectObject(mdc, bmp)
+    u.PrintWindow(wins[0], mdc, 3)  # PW_CLIENTONLY | PW_RENDERFULLCONTENT
+    header = (ctypes.c_uint32 * 10)(40, w, (-h) & 0xFFFFFFFF, 1 | (32 << 16), 0, 0, 0, 0, 0, 0)
+    buf = ctypes.create_string_buffer(w * h * 4)
+    g.GetDIBits(mdc, bmp, 0, h, buf, header, 0)
+    g.DeleteObject(bmp)
+    g.DeleteDC(mdc)
+    u.ReleaseDC(wins[0], hdc)
+    img = Image.frombuffer("RGBA", (w, h), buf, "raw", "BGRA", 0, 1).convert("RGB")
+    shots = vm_dir(a.name) / "shots"
+    shots.mkdir(exist_ok=True)
+    out = Path(a.out) if a.out else shots / time.strftime("window-%Y%m%d-%H%M%S.png")
+    img.save(out)
+    colours = img.getcolors(1 << 16)
+    print(f"{out.resolve()} ({w}x{h}, {len(colours) if colours else 'many'} colours)")
+
+
 def cmd_place(a) -> None:
     state = load_state(a.name)
     if not running(state):
@@ -856,6 +891,8 @@ def main() -> None:
     s.add_argument("--timeout", type=float, default=60); s.add_argument("--wait-agent", type=float, default=0)
     s.set_defaults(f=cmd_exec)
     s = sub.add_parser("place", help="move a VM window to the second screen"); s.add_argument("name"); s.set_defaults(f=cmd_place)
+    s = sub.add_parser("window", help="PNG of the VM window itself (works in GL mode)")
+    s.add_argument("name"); s.add_argument("out", nargs="?"); s.set_defaults(f=cmd_window)
     s = sub.add_parser("ui", help="drive the installer over its control channel (renner.test=1)")
     s.add_argument("name"); s.add_argument("command", nargs="*")
     s.add_argument("--wait-page", type=int); s.add_argument("--fail-page", type=int)
