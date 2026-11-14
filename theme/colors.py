@@ -130,7 +130,7 @@ def main() -> None:
         },
         "WM": {**WM, "activeFont": "Inter,10,-1,5,600,0,0,0,0,0,0,0,0,0,0,1"},
         "Icons": {"Theme": "Papirus-Dark"},
-        "KDE": {"LookAndFeelPackage": "dev.renner.desktop", "widgetStyle": "Breeze",
+        "KDE": {"LookAndFeelPackage": "dev.renner.desktop", "widgetStyle": "Darkly",
                 "contrast": "4", "AnimationDurationFactor": "0.7"},
         **EFFECTS, **GROUPS,
         # A Windows-sized System Settings: KDE's expert pages are hidden (Kiosk).

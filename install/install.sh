@@ -261,7 +261,6 @@ EOF
     fi
     ((GPU_MULTI)) && units+=(switcheroo-control.service)
     arch-chroot "$TARGET" systemctl enable "${units[@]}" >/dev/null
-    install_local_packages
     install_proton
     install_apps
 }
@@ -312,24 +311,6 @@ install_apps() {
     chmod 755 "$TARGET/usr/share/renner-os/launcher/RennerLauncher.AppImage"
 }
 
-# Packages renner.dev OS builds itself (e.g. the Darkly widget style) until its
-# own repository exists (RO-14): from the install medium's renner/repo.
-LOCAL_REPO=${RENNER_LOCAL_REPO:-/run/archiso/bootmnt/renner/repo}
-install_local_packages() {
-    local pkgs=()
-    [[ -d $LOCAL_REPO ]] && mapfile -t pkgs < <(find "$LOCAL_REPO" -maxdepth 1 -name '*.pkg.tar.*' ! -name '*-debug-*' ! -name '*.sig')
-    if ((${#pkgs[@]} == 0)); then
-        echo "    no renner.dev packages on this medium; the look falls back to Breeze"
-        return 0
-    fi
-    say "Adding renner.dev packages"
-    install -d "$TARGET/var/tmp/renner-pkgs"
-    cp "${pkgs[@]}" "$TARGET/var/tmp/renner-pkgs/"
-    arch-chroot "$TARGET" sh -c 'pacman -U --noconfirm --needed /var/tmp/renner-pkgs/*' \
-        || die "could not install the renner.dev packages"
-    rm -rf "$TARGET/var/tmp/renner-pkgs"
-}
-
 # Proton for Windows programs, part of the system image: GE-Proton's latest
 # release, checked against its published SHA-512. renner-exe runs it directly,
 # so no user ever downloads anything on a first start.
@@ -357,19 +338,47 @@ install_proton() {
     echo "    $name"
 }
 
+# renner.dev OS's own packages come from its signed pacman repository, so they
+# update with the system (renner-update): renner-os (system/: updater, look,
+# defaults) and, with the desktop, renner-style (our Darkly fork). The install
+# medium may carry a copy of the repository (renner/repo); it is used first,
+# for an install without network, and only during the install.
+REPO_URL=${RENNER_REPO_URL:-https://github.com/rennerdo30/renner-os/releases/download/repo}
+LOCAL_REPO=${RENNER_LOCAL_REPO:-/run/archiso/bootmnt/renner/repo}
 install_system_files() {
     say "Installing renner.dev OS components"
-    local f mode
-    for f in "${SYSTEM_FILES[@]}"; do
-        mode=644
-        case $f in
-            usr/bin/* | usr/lib/renner-os/activate | usr/lib/renner-os/boot-health \
-                | usr/lib/renner-os/initrd-etc-overlay | usr/lib/renner-os/renner-exe-binfmt \
-                | usr/lib/renner-os/apps-finish | usr/lib/renner-os/trim-themes \
-                | usr/lib/renner-os/userdb-generate | usr/lib/renner-os/brand) mode=755 ;;
-        esac
-        install -Dm"$mode" "$STAGING/$f" "$TARGET/$f"
+    local k medium=""
+    # The repository key, trusted before the first download from it.
+    for k in renner-os.gpg renner-os-trusted renner-os-revoked; do
+        install -Dm644 "$STAGING/usr/share/pacman/keyrings/$k" "$TARGET/usr/share/pacman/keyrings/$k"
     done
+    arch-chroot "$TARGET" pacman-key --populate renner-os >/dev/null || die "could not add the renner-os repository key"
+    if [[ -f $LOCAL_REPO/renner-os.db ]]; then
+        install -d "$TARGET/var/tmp/renner-repo"
+        cp "$LOCAL_REPO"/* "$TARGET/var/tmp/renner-repo/"
+        medium="Server = file:///var/tmp/renner-repo"
+    fi
+    # Before [core]: our packages win over same-named ones elsewhere. The medium's
+    # copy (if any) is the first server during the install only.
+    awk -v url="$REPO_URL" -v medium="$medium" '
+        /^\[core\]/ && !done {
+            print "# renner.dev OS packages (renner-update keeps them current)"
+            print "[renner-os]"
+            if (medium != "") print medium
+            print "Server = " url
+            print ""
+            done = 1
+        }
+        { print }' "$TARGET/etc/pacman.conf" >"$TARGET/etc/pacman.conf.new"
+    mv "$TARGET/etc/pacman.conf.new" "$TARGET/etc/pacman.conf"
+    grep -q '^\[renner-os\]' "$TARGET/etc/pacman.conf" || die "could not add the renner-os repository"
+    local pkgs=(renner-os)
+    ((DESKTOP)) && pkgs+=(renner-style)
+    arch-chroot "$TARGET" pacman -Sy --noconfirm --needed \
+        --overwrite '/usr/share/pacman/keyrings/renner-os*' "${pkgs[@]}" \
+        || die "could not install the renner.dev OS packages (${pkgs[*]})"
+    sed -i '\#^Server = file:///var/tmp/renner-repo#d' "$TARGET/etc/pacman.conf"
+    rm -rf "$TARGET/var/tmp/renner-repo"
     # The system's name: renner.dev OS, not Arch Linux (boot menu, boot, login).
     sh "$TARGET/usr/lib/renner-os/brand" "$TARGET"
 }
@@ -430,9 +439,6 @@ EOF
             || die "could not install the QEMU guest agent"
         arch-chroot "$TARGET" systemctl enable qemu-guest-agent.service >/dev/null 2>&1 || true
     fi
-    # The Darkly look when Darkly is installed (else Breeze stays): widget style
-    # and window frames; its own settings app is hidden from the menu.
-    "$TARGET/usr/lib/renner-os/apply-style" "$TARGET" || die "could not apply the Darkly style"
     # One look: the stock KDE themes go (the pacman hook repeats this on updates).
     if ((DESKTOP)); then arch-chroot "$TARGET" /usr/lib/renner-os/trim-themes || die "could not trim the KDE themes"; fi
     # Finishes Flatpak apps the installer could not (it does nothing otherwise).

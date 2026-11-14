@@ -1,0 +1,17 @@
+# renner.dev OS: background system update (renner-update.timer, or "Check for
+# updates" in the start menu). Builds a new deployment only when updates exist;
+# the running system never changes. Lowest CPU and disk priority, so games and
+# the desktop do not notice it.
+[Unit]
+Description=renner.dev OS update
+Documentation=man:pacman(8)
+Wants=network-online.target
+After=network-online.target renner-boot-health.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/renner-update auto
+Nice=19
+CPUSchedulingPolicy=idle
+IOSchedulingClass=idle
+TimeoutStartSec=2h

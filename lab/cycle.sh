@@ -12,13 +12,16 @@ export VM
 snap=E:/AgentData/renneros-lab/snapshot
 rm -rf "$snap" && mkdir -p "$snap"
 git archive HEAD | tar -x -C "$snap"
+# The snapshot has no .git: the renner-os package version comes from here.
+version="0.r$(git rev-list --count HEAD).g$(git rev-parse --short=8 HEAD)"
 echo "== snapshot of $(git rev-parse --short HEAD) in $snap"
 cd "$snap"
 snap_wsl=/mnt/$(pwd -W | sed -E 's#^([A-Za-z]):#\L\1#')
 # QEMU keeps the ISO open; the build cannot replace it while a VM uses it.
 python lab/lab.py down "$VM" >/dev/null
 echo "== build ($snap_wsl)"
-MSYS_NO_PATHCONV=1 wsl.exe -d renneros-build -- timeout 1800 bash "$snap_wsl/lab/wsl-build.sh" installer iso
+MSYS_NO_PATHCONV=1 wsl.exe -d renneros-build -- timeout 2700 env RENNER_OS_VERSION="$version" \
+    bash "$snap_wsl/lab/wsl-build.sh" repo installer iso
 # A running WSL distro next to a WHPX VM froze QEMU early in the boot twice
 # (2026-11-08); our own build distro is not needed until the next build.
 wsl.exe --terminate renneros-build >/dev/null

@@ -1,0 +1,15 @@
+# renner.dev OS: "Update ready, restart now?" notification. Started by
+# renner-update-notify.path when an update finishes, and at login when one
+# finished before (the marker lives in /run until the restart).
+[Unit]
+Description=renner.dev OS update notification
+PartOf=graphical-session.target
+After=graphical-session.target plasma-workspace.target
+
+[Service]
+Type=simple
+ExecCondition=/usr/bin/test -s /run/renner-update-ready
+ExecStart=/usr/lib/renner-os/update-notify
+
+[Install]
+WantedBy=graphical-session.target

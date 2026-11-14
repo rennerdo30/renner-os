@@ -59,6 +59,13 @@ signed with our key. The installer only adds that repo and installs a
 meta-package. That way every part of renner.dev OS updates through pacman like
 the rest of Arch, and the install script stays small.
 
+State (2026-11-14, RO-14): `packages/build-repo.sh` builds the repo in our WSL
+distro with an ed25519 key that never leaves it; the public key ships in
+`renner-os` (`/usr/share/pacman/keyrings/`). Packages: `renner-os` (all of
+`system/`, version `0.r<commits>.g<hash>`) and `renner-style` (our Darkly fork,
+replaces `darkly`). The repo sits before `[core]` in `pacman.conf`. Until it is
+published (GitHub release `repo`, owner's yes), only lab VMs reach it.
+
 ### Install script (step 1)
 
 - Runs on the official Arch ISO as root and asks only a few questions: disk,
@@ -105,8 +112,9 @@ The closest match with plain Arch packages:
   `renner.etc=off` on the kernel command line is the deliberate repair bypass
   (read-only `/etc`).
 - **`renner-update`** never changes the running system:
-  1. snapshot of the booted deployment, with a monotonic ID (UTC, always above
-     the newest existing ID);
+  1. snapshot of the newest finished deployment that has not failed to boot
+     (normally the booted one; a second update before the restart builds on
+     the first), with a monotonic ID (UTC, always above the newest existing ID);
   2. the effective configuration is mirrored from the live `/etc` into it,
      deletions included: pacman config, the boot configuration (kernel command
      line, mkinitcpio, modprobe, modules-load, vconsole) and the account
@@ -118,6 +126,13 @@ The closest match with plain Arch packages:
   A failed transaction deletes its snapshot and boot entry; anything left
   unfinished is removed by the next update. It keeps 3 finished deployments
   plus the booted one.
+- **Automatic updates (like Windows Update):** `renner-update.timer` starts
+  `renner-update auto` 15 minutes after boot and then daily, at idle CPU and IO
+  priority. It only builds a deployment when `renner-update check` lists
+  updates. A finished update writes `/run/renner-update-ready`; the user unit
+  `renner-update-notify` shows "Update ready" with "Restart now" (Plasma's
+  restart dialog). "Check for updates" in the start menu starts the same
+  service (polkit lets the local, active user start exactly that unit).
 - **System accounts travel with the version (owner decision 2026-11-07,
   systemd userdb):** `userdb-generate` turns the deployment's system users and
   groups (ID 1-999) into JSON records in its read-only `/usr/lib/userdb/`

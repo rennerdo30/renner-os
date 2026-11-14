@@ -10,7 +10,6 @@ usr/lib/environment.d/40-renner-xdg.conf
 usr/lib/initcpio/install/renner-etc-overlay
 usr/lib/modules-load.d/renner-ntsync.conf
 usr/lib/renner-os/activate
-usr/lib/renner-os/apply-style
 usr/lib/renner-os/apps-finish
 usr/lib/renner-os/boot-health
 usr/lib/renner-os/brand
@@ -18,6 +17,8 @@ usr/lib/renner-os/essential.units
 usr/lib/renner-os/initrd-etc-overlay
 usr/lib/renner-os/renner-exe-binfmt
 usr/lib/renner-os/trim-themes
+usr/lib/renner-os/update-check
+usr/lib/renner-os/update-notify
 usr/lib/renner-os/userdb-generate
 usr/lib/sysctl.d/80-renner-performance.conf
 usr/lib/systemd/system/renner-activate-accounts.service
@@ -25,8 +26,12 @@ usr/lib/systemd/system/renner-activate-var.service
 usr/lib/systemd/system/renner-apps.service
 usr/lib/systemd/system/renner-boot-health.service
 usr/lib/systemd/system/renner-etc-overlay.service
+usr/lib/systemd/system/renner-update.service
+usr/lib/systemd/system/renner-update.timer
 usr/lib/systemd/system/system.slice.d/10-renner-oomd.conf
 usr/lib/systemd/system/user.slice.d/10-renner-oomd.conf
+usr/lib/systemd/user/renner-update-notify.path
+usr/lib/systemd/user/renner-update-notify.service
 usr/lib/systemd/zram-generator.conf
 usr/lib/tmpfiles.d/renner-thp.conf
 usr/lib/udev/rules.d/60-renner-ioschedulers.rules
@@ -35,6 +40,7 @@ usr/lib/udev/rules.d/71-renner-nvidia-pm.rules
 usr/share/applications/kwil.desktop
 usr/share/applications/renner-exe.desktop
 usr/share/applications/renner-launcher.desktop
+usr/share/applications/renner-update.desktop
 usr/share/color-schemes/RennerDark.colors
 usr/share/desktop-directories/renner-windows.directory
 usr/share/icons/hicolor/256x256/apps/renner-launcher.png
@@ -44,6 +50,9 @@ usr/share/kio/servicemenus/renner-exe.desktop
 usr/share/kxmlgui5/dolphin/dolphinui.rc
 usr/share/libalpm/hooks/80-renner-brand.hook
 usr/share/libalpm/hooks/90-renner-trim-themes.hook
+usr/share/pacman/keyrings/renner-os-revoked
+usr/share/pacman/keyrings/renner-os-trusted
+usr/share/pacman/keyrings/renner-os.gpg
 usr/share/plasma/desktoptheme/renner/dialogs/background.svg
 usr/share/plasma/desktoptheme/renner/metadata.json
 usr/share/plasma/desktoptheme/renner/opaque/dialogs/background.svg
@@ -67,6 +76,7 @@ usr/share/plasma/plasmoids/dev.renner.start/contents/ui/ItemRow.qml
 usr/share/plasma/plasmoids/dev.renner.start/contents/ui/Launcher.qml
 usr/share/plasma/plasmoids/dev.renner.start/contents/ui/main.qml
 usr/share/plasma/plasmoids/dev.renner.start/metadata.json
+usr/share/polkit-1/rules.d/50-renner-update.rules
 usr/share/renner-os/issue
 usr/share/renner-os/os-release
 usr/share/renner-os/xdg/breezerc

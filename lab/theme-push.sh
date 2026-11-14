@@ -22,7 +22,7 @@ python theme/manifest.py >/dev/null
 # Theme-related parts of system/ (the rest needs a real update).
 tar --force-local -C system -cf "$ART/theme.tar" \
     usr/share/plasma usr/share/color-schemes usr/share/icons usr/share/wallpapers \
-    usr/share/renner-os/xdg usr/share/kxmlgui5 usr/lib/renner-os/trim-themes usr/lib/renner-os/apply-style \
+    usr/share/renner-os/xdg usr/share/kxmlgui5 usr/lib/renner-os/trim-themes \
     usr/share/libalpm/hooks/90-renner-trim-themes.hook
 # Only /usr: /etc is an overlay whose lower layer must not change while it is
 # mounted (writing there broke every app's colors in the lab, 2026-11-08).
@@ -44,7 +44,6 @@ T=120 X sh -c 'set -e
     btrfs property set -ts /run/renner-push ro false
     tar -xf /tmp/theme.tar -C /run/renner-push --no-same-owner
     /usr/lib/renner-os/trim-themes /run/renner-push
-    sh /run/renner-push/usr/lib/renner-os/apply-style /run/renner-push
     rm -f /tmp/theme.tar'
 # Reload what Plasma and KWin read; the user's own settings are reset to the
 # system defaults so the pushed defaults show.

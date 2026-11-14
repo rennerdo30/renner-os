@@ -2,7 +2,7 @@
 # renner-update: transactional updates for renner.dev OS.
 #
 # The running system never changes. Each transaction:
-#   1. snapshots the booted deployment (@deployments/<id>) into a new one,
+#   1. snapshots the current deployment (@deployments/<id>) into a new one,
 #   2. runs pacman inside the new deployment (chroot),
 #   3. rebuilds its unified kernel image (UKI) and marks it read-only,
 #   4. adds it to the boot menu with boot counting (3 tries), so a version
@@ -11,9 +11,16 @@
 # (userdb-generate); package files under /var are seeded into the shared /var
 # on the deployment's first boot (renner-activate-var.service).
 #
+# An update builds on the newest finished deployment that has not failed to
+# boot, so a second update before the restart keeps the first one's changes.
+# A finished update writes /run/renner-update-ready; the desktop then offers
+# "Restart now" (renner-update-notify).
+#
 #   renner-update                  full system upgrade (pacman -Syu)
 #   renner-update install PKG...   add packages
 #   renner-update remove PKG...    remove packages
+#   renner-update check            list available updates (exit 1: none)
+#   renner-update auto             upgrade only when updates exist (timer)
 #   renner-update status           list deployments and boot entries
 set -Eeuo pipefail
 
@@ -25,6 +32,7 @@ readonly TOP=$WORK/top     # btrfs top level (subvolid 5)
 readonly ROOT=$WORK/root   # bind mount of the new deployment for the chroot
 readonly MARKER=usr/lib/renner-os/deployment-complete
 readonly MANIFEST=usr/lib/renner-os/activation  # read by renner-activate at boot
+readonly READY=/run/renner-update-ready        # update waiting for a restart (desktop notification)
 
 # Live /etc paths mirrored into the new deployment before pacman runs, so the
 # chroot (which sees the deployment's own /etc, without the overlay) builds
@@ -95,6 +103,35 @@ prune() {
         say "Removing old deployment ${finished[i]}"
         delete_deployment "${finished[i]}"
     done
+}
+
+failed_boot() {  # systemd-boot counted the entry down to zero: it never booted cleanly
+    compgen -G "$ESP/EFI/Linux/renner-$1+0-*.efi" >/dev/null
+}
+
+base_deployment() {  # newest finished deployment that has not failed to boot
+    local id best=$booted
+    while read -r id; do
+        ((id > best)) || continue
+        is_finished "$id" && ! failed_boot "$id" && best=$id
+    done < <(deployments)
+    echo "$best"
+}
+
+pending() {  # available updates for deployment $1, one "name old -> new" per line
+    # Exit 1: nothing to update; exit 2: the package lists could not be loaded.
+    local db rc=0
+    db=$(mktemp -d /run/renner-update-check.XXXXXX)
+    ln -s "$TOP/@deployments/$1/usr/lib/sysimage/pacman/local" "$db/local"
+    cp -a "$TOP/@deployments/$1/usr/lib/sysimage/pacman/sync" "$db/" 2>/dev/null || true
+    if ! pacman -Sy --dbpath "$db" --logfile /dev/null >/dev/null; then
+        rm -rf "$db"
+        echo "renner-update: could not load the package lists (offline?)" >&2
+        return 2
+    fi
+    pacman -Qu --dbpath "$db" || rc=$?
+    rm -rf "$db"
+    return "$rc"
 }
 
 next_id() {
@@ -168,8 +205,10 @@ transaction() {
     dst=$TOP/@deployments/$new
     [[ ! -e $dst ]] || die "deployment $new already exists"
 
-    say "New deployment $new from $booted"
-    btrfs subvolume snapshot "$TOP/@deployments/$booted" "$dst" >/dev/null
+    local base
+    base=$(base_deployment)
+    say "New deployment $new from $base"
+    btrfs subvolume snapshot "$TOP/@deployments/$base" "$dst" >/dev/null
     trap cleanup EXIT
     rm -f "$dst/$MARKER"
     rm -rf "${dst:?}/$MANIFEST"   # the previous transaction's manifest is not ours
@@ -206,7 +245,21 @@ transaction() {
     trap - EXIT
 
     prune
+    echo "$new" >"$READY"
     say "Done. Deployment $new boots next; the previous one stays in the boot menu."
+}
+
+auto() {  # the timer's job: an upgrade only when there is something to install
+    local list rc=0
+    list=$(pending "$(base_deployment)") || rc=$?
+    case $rc in
+        0) ;;
+        1) say "Up to date"; return 0 ;;
+        *) die "update check failed" ;;
+    esac
+    say "$(wc -l <<<"$list") update(s):"
+    sed 's/^/    /' <<<"$list"
+    transaction -Syu --noconfirm
 }
 
 [[ $EUID -eq 0 ]] || die "run as root (sudo renner-update)"
@@ -218,9 +271,11 @@ flock -n 9 || die "another renner-update is running"
 
 case ${1:-upgrade} in
     status) status ;;
+    check) mount_top; pending "$(base_deployment)" ;;
+    auto) mount_top; auto ;;
     upgrade) mount_top; transaction -Syu --noconfirm ;;
     install) shift; (($#)) || die "install: no packages given"; mount_top; transaction -Syu --noconfirm --needed "$@" ;;
     remove) shift; (($#)) || die "remove: no packages given"; mount_top; transaction -Rns --noconfirm "$@" ;;
-    -h | --help) sed -n '2,16p' "$0" | sed 's/^# \{0,1\}//' ;;
+    -h | --help) sed -n '2,23p' "$0" | sed 's/^# \{0,1\}//' ;;
     *) die "unknown command '$1' (try --help)" ;;
 esac

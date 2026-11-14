@@ -1,0 +1,12 @@
+[Desktop Entry]
+Type=Application
+Name=Check for updates
+Name[de]=Nach Updates suchen
+Comment=Update renner.dev OS
+Comment[de]=renner.dev OS aktualisieren
+Exec=/usr/lib/renner-os/update-check
+Icon=system-software-update
+Terminal=false
+Categories=System;Settings;
+Keywords=update;upgrade;windows update;system;
+Keywords[de]=update;aktualisierung;system;

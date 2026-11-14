@@ -21,9 +21,14 @@ break.
   `renner-update` installs updates into a new deployment, and the boot menu
   keeps the earlier ones. If a new one fails to boot three times, the system
   falls back to the previous one by itself. `/etc` is a writable overlay.
+- **Automatic updates.** A daily background update (lowest priority) installs
+  Arch and renner.dev updates into a new deployment, then a notification offers
+  "Restart now". "Check for updates" in the start menu runs it on demand. Our
+  own parts come as packages from the signed `renner-os` repository
+  ([`packages/`](packages/)), so they update like the rest of the system.
 - **Look and desktop (renner.dev):**
   - our own color scheme, Plasma style, global theme, wallpaper and login splash;
-  - the Darkly widget style; Inter and Papirus;
+  - our widget style and window frames (`renner-style`, a Darkly fork); Inter and Papirus;
   - a Windows-like taskbar and tray, and a slim "show desktop" edge;
   - **renner.dev Start:** search first, with pinned apps and all apps A–Z;
     the Windows key opens it;
@@ -70,7 +75,7 @@ break.
 | [`iso/`](iso/) | ISO patcher and the ISO's autostart |
 | [`system/`](system/) | Files the installer puts on the new system; [`system/MANIFEST`](system/MANIFEST) lists them |
 | [`theme/`](theme/) | Generators for colors, Plasma style, wallpaper and panel layout |
-| [`packages/`](packages/) | Builds of packages we ship ourselves (Darkly) |
+| [`packages/`](packages/) | The signed `renner-os` pacman repository: `renner-os` (everything under `system/`) and `renner-style`; `build-repo.sh` builds it |
 | [`lab/`](lab/) | Test lab: QEMU on Windows, WSL builds, automated install and system tests |
 | `tests/` | Offline unit tests |
 

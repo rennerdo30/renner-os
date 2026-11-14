@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # Lab builds in our own WSL distro (renneros-build, Arch), not in a QEMU VM.
 #
-#   wsl.exe -d renneros-build -- bash "/mnt/e/Development/renner.dev OS/lab/wsl-build.sh" [installer] [iso]
+#   wsl.exe -d renneros-build -- bash "/mnt/e/Development/renner.dev OS/lab/wsl-build.sh" [repo] [installer] [iso]
 #
+#   repo       build and sign the renner-os package repository (packages/build-repo.sh)
 #   installer  test installer-core, build renner-installer (kms GUI), publish it to the lab artifacts
 #   iso        patch the newest official ISO with that installer (lab options: cache mirror,
 #              serial console) into artifacts/renner-os-lab.iso
@@ -19,7 +20,7 @@ export RUSTC_WRAPPER=sccache SCCACHE_DIR=/mnt/e/sccache/renneros-wsl
 mkdir -p "$ART" "$SCCACHE_DIR"
 
 steps=("$@")
-((${#steps[@]})) || steps=(installer iso)
+((${#steps[@]})) || steps=(repo installer iso)
 
 for step in "${steps[@]}"; do
     case $step in
@@ -45,12 +46,27 @@ for step in "${steps[@]}"; do
             install -m 755 "$HOME/build/renner-bench/renner-bench" "$ART/renner-bench"
             echo "    $ART/renner-bench"
             ;;
+        repo)
+            echo "==> renner-os package repository"
+            bash "$REPO/packages/build-repo.sh"
+            ;;
+        repo-next)
+            # lab/test-update.sh: the same repository with a newer renner-os
+            # (next release number), published while the VM runs.
+            echo "==> renner-os, next release (artifacts/repo-next)"
+            rm -rf "$ART/repo-next"
+            cp -r "$ART/repo" "$ART/repo-next"
+            cur=$(ls "$ART"/repo/renner-os-*.pkg.tar.zst | head -1 | sed -E 's/.*renner-os-(.*)-([0-9]+)-any\.pkg\.tar\.zst$/\1 \2/')
+            RENNER_REPO_OUT="$ART/repo-next" RENNER_OS_VERSION=${cur% *} RENNER_PKGREL=$((${cur#* } + 1)) \
+                bash "$REPO/packages/build-repo.sh" renner-os
+            ;;
         iso)
             iso=$(ls "$LAB"/isos/archlinux-*-x86_64.iso | sort | tail -1)
             pacman -Sy >/dev/null   # the package lists patch-iso.sh resolves against
             echo "==> patching $(basename "$iso")"
             bash "$REPO/iso/patch-iso.sh" --iso "$iso" --installer "$ART/renner-installer" \
-                --out "$HOME/renner-os-lab.iso" --mirror http://10.0.2.2:8079 --serial-console --test --repo "$LAB/repo"
+                --out "$HOME/renner-os-lab.iso" --mirror http://10.0.2.2:8079 --serial-console --test \
+                --repo "$ART/repo" --repo-url http://10.0.2.2:8079/artifacts/repo
             install -m 644 "$HOME/renner-os-lab.iso" "$ART/renner-os-lab.iso"
             echo "    $ART/renner-os-lab.iso"
             ;;

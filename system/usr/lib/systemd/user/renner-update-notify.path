@@ -1,0 +1,11 @@
+# renner.dev OS: an update finished in the background (renner-update writes
+# /run/renner-update-ready); renner-update-notify.service offers the restart.
+[Unit]
+Description=Watch for a finished renner.dev OS update
+
+[Path]
+PathChanged=/run/renner-update-ready
+Unit=renner-update-notify.service
+
+[Install]
+WantedBy=graphical-session.target

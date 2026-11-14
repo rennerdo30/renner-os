@@ -1,0 +1,33 @@
+# renner.dev OS system files: updater, boot health, look and defaults
+# (everything under system/ in the renner-os repository). build-repo.sh fills
+# in the version and points SYSTEM at a copy of the checkout's system/ folder.
+pkgname=renner-os
+pkgver=@PKGVER@
+pkgrel=@PKGREL@
+pkgdesc="renner.dev OS: updater, boot health, desktop look and defaults"
+arch=(any)
+url=https://github.com/rennerdo30/renner-os
+license=(LicenseRef-renner-os)
+depends=(bash btrfs-progs systemd pacman arch-install-scripts mkinitcpio libnotify)
+optdepends=('renner-style: the renner.dev widget style and window frames')
+backup=(etc/scx_loader.toml etc/profile.d/renner-xdg.sh)
+install=renner-os.install
+options=(!strip !debug)
+
+package() {
+    cd "${SYSTEM:?}"
+    local f mode
+    while read -r f; do
+        [[ -n $f ]] || continue
+        mode=644
+        # Scripts are executable; initcpio install hooks are sourced, not run.
+        [[ $f != usr/lib/initcpio/* && $(head -c2 "$f") == '#!' ]] && mode=755
+        install -Dm"$mode" "$f" "$pkgdir/$f"
+    done <MANIFEST
+    # Enabled by the package itself, so updates bring new units already on.
+    install -d "$pkgdir/usr/lib/systemd/system/timers.target.wants" \
+               "$pkgdir/usr/lib/systemd/user/graphical-session.target.wants"
+    ln -s ../renner-update.timer "$pkgdir/usr/lib/systemd/system/timers.target.wants/"
+    ln -s ../renner-update-notify.path ../renner-update-notify.service \
+        "$pkgdir/usr/lib/systemd/user/graphical-session.target.wants/"
+}

@@ -1,0 +1,11 @@
+// renner.dev OS: the signed-in user may start the system update ("Check for
+// updates") without a password; it only installs signed packages into a new
+// deployment, the running system never changes.
+polkit.addRule(function (action, subject) {
+    if (action.id == "org.freedesktop.systemd1.manage-units" &&
+        action.lookup("unit") == "renner-update.service" &&
+        action.lookup("verb") == "start" &&
+        subject.local && subject.active) {
+        return polkit.Result.YES;
+    }
+});

@@ -1,0 +1,25 @@
+#!/bin/sh
+# renner.dev OS: "Check for updates" (start menu). Runs the same background
+# update as the daily timer (polkit allows it for the local user, see
+# 50-renner-update.rules) and says how it ended; a finished update shows the
+# restart notification by itself (renner-update-notify).
+app="renner.dev OS" icon=system-software-update
+note() { notify-send --app-name="$app" --icon="$icon" "$@"; }
+if systemctl is-active -q renner-update.service; then
+    note "Update in progress" "renner.dev OS is already updating in the background."
+    exit 0
+fi
+before=$(cat /run/renner-update-ready 2>/dev/null)
+note --transient "Checking for updates" "This runs in the background; you can keep working."
+if ! systemctl start renner-update.service; then
+    note --urgency=critical "Update failed" "Details: journalctl -u renner-update"
+    exit 1
+fi
+after=$(cat /run/renner-update-ready 2>/dev/null)
+if [ -n "$after" ] && [ "$after" != "$before" ]; then
+    exit 0    # renner-update-notify offers the restart
+elif [ -n "$after" ]; then
+    note "Update ready" "An update is already installed. Restart your PC to finish it."
+else
+    note "Up to date" "renner.dev OS is up to date."
+fi

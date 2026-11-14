@@ -1,6 +1,6 @@
 [org.kde.kdecoration2]
-library=org.kde.breeze
-theme=Breeze
+library=org.kde.darkly
+theme=Darkly
 ButtonsOnLeft=
 ButtonsOnRight=IAX
 

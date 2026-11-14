@@ -1,0 +1,13 @@
+# renner.dev OS: look for updates 15 minutes after boot and then daily, like
+# Windows Update. renner-update.service does the work.
+[Unit]
+Description=Daily renner.dev OS update
+
+[Timer]
+OnBootSec=15min
+OnUnitActiveSec=1d
+RandomizedDelaySec=30min
+Persistent=true
+
+[Install]
+WantedBy=timers.target

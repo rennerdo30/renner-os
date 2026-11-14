@@ -5,7 +5,7 @@ ColorScheme=RennerDark
 Theme=Papirus-Dark
 
 [kdeglobals][KDE]
-widgetStyle=Breeze
+widgetStyle=Darkly
 
 [plasmarc][Theme]
 name=renner
@@ -14,8 +14,8 @@ name=renner
 cursorTheme=breeze_cursors
 
 [kwinrc][org.kde.kdecoration2]
-library=org.kde.breeze
-theme=Breeze
+library=org.kde.darkly
+theme=Darkly
 
 [ksplashrc][KSplash]
 Engine=KSplashQML

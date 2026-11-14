@@ -9,6 +9,7 @@
 # Optional kernel command line parameters (set by patch-iso.sh):
 #   renner.mirror=URL   pacman mirror base, e.g. a local package cache
 #   renner.source=URL   where install/ and system/ come from (default: the ISO)
+#   renner.repo=URL     the renner-os package repository the system updates from
 #   renner.serial=1     also log to the serial console (lab)
 set -uo pipefail
 
@@ -26,6 +27,7 @@ mirror=$(param renner.mirror) || mirror=
 source=$(param renner.source) || source="file://$MEDIA/source"
 serial=$(param renner.serial) || serial=0
 test=$(param renner.test) || test=0
+repo=$(param renner.repo) || repo=
 
 # Typing renner-install starts it again (after connecting Wi-Fi, or after quitting).
 cat >/usr/local/bin/renner-install <<EOF
@@ -47,6 +49,7 @@ printf '\n  \033[1mrenner\033[0m\033[38;5;208m.dev\033[0m OS installer is starti
 export RENNER_PKGS="$MEDIA/pkgs"
 export RENNER_INSTALLER_URL="file://$MEDIA/renner-installer"
 export RENNER_SOURCE="$source"
+[[ -n $repo ]] && export RENNER_REPO_URL="$repo"
 [[ $serial == 1 ]] && export RENNER_SERIAL_CONSOLE=1
 # Lab: the installer takes commands on the second serial port (control.rs).
 if [[ $test == 1 && -e /dev/ttyS1 ]]; then

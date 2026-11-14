@@ -21,7 +21,7 @@ Theme=Papirus-Dark
 
 [KDE]
 LookAndFeelPackage=dev.renner.desktop
-widgetStyle=Breeze
+widgetStyle=Darkly
 contrast=4
 AnimationDurationFactor=0.7
 
