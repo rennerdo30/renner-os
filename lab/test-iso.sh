@@ -25,8 +25,8 @@ L key $VM ret                       # stock QEMU (WHPX): the boot menu countdown
 # The control channel is a serial port the boot menu reads too: nothing goes
 # over it before the kernel runs (with our QEMU the countdown runs, and early
 # polls typed into the menu: timeout +, edit, then the EFI shell; 2026-11-14).
-for i in $(seq 1 90); do grep -aq "Linux version" "$SER" 2>/dev/null && break; sleep 2; done
-grep -aq "Linux version" "$SER" || fail "the installer's kernel did not start"
+for i in $(seq 1 90); do grep -aq "Reached target" "$SER" 2>/dev/null && break; sleep 2; done
+grep -aq "Reached target" "$SER" || fail "the installer's kernel did not start"
 page 0 180; L shot $VM $S/I1-welcome.png >/dev/null
 U pick language 2                   # Deutsch (Deutschland): keyboard de, Europe/Berlin
 U next; page 1; sleep 3; L shot $VM $S/I2-network.png >/dev/null
