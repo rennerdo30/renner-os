@@ -69,7 +69,7 @@ jobs:
           bash packages/build-repo.sh
       - name: Keyring unchanged
         run: git -c safe.directory="$GITHUB_WORKSPACE" diff --exit-code -- system/usr/share/pacman/keyrings
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: repo
           path: out/
