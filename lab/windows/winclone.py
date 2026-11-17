@@ -5,7 +5,7 @@ Every start boots a fresh overlay on a frozen copy of the "win" VM's disk;
 stop discards it. Commands run in tom's logged-on desktop session, not elevated
 by default (an interactive scheduled task), so they see the desktop and the GPU.
 
-  python lab/windows/winclone.py start [--minutes 60] [--mem 6G] [--no-gpu] [--rdp]
+  python lab/windows/winclone.py start [--minutes 60] [--mem 6G] [--no-gpu] [--rdp] [--headless]
   python lab/windows/winclone.py push LOCAL [GUEST_PATH]      (default C:\\remora\\<name>)
   python lab/windows/winclone.py exec [--timeout 120] [--elevated] [--system] COMMAND
   python lab/windows/winclone.py exec-background [--elevated] COMMAND   (prints the log path)
@@ -25,6 +25,10 @@ before TermService starts at boot; switching it on in a running clone leaves
 no listener (LocalSessionManager event 17, 0x80070005), and a clone cannot
 reboot. Guest TCP 3389 is forwarded to 127.0.0.1:13389 (NLA; user tom).
 Never change base.qcow2 in place: base-rdp.qcow2 and other overlays sit on it.
+
+--headless: no QEMU window on the owner's desktop (-display none, VNC as lab.py
+adds it). GL needs the SDL window, so a headless clone has plain graphics
+(as --no-gpu).
 """
 
 from __future__ import annotations
@@ -66,16 +70,18 @@ class Agent:
         state = L.load_state(name)
         self.s = socket.create_connection(("127.0.0.1", L.qga_port(state)), timeout=timeout)
         self.buf = b""
+        # Sync once, then drop every reply until ours: replies an earlier client
+        # left queued come first. (Re-sending the same token left a spare reply
+        # queued, which the next command then read as its result.)
         token = secrets.randbelow(1 << 30)
-        for _ in range(20):  # drop stale replies queued by an earlier client
-            try:
-                if self.call("guest-sync-delimited", id=token) == token:
-                    break
-            except RuntimeError:
-                continue
+        self._send("guest-sync-delimited", id=token)
+        while self._read().get("return") != token:
+            pass
 
-    def call(self, execute: str, **arguments):
+    def _send(self, execute: str, **arguments) -> None:
         self.s.sendall(json.dumps({"execute": execute, "arguments": arguments}).encode() + b"\n")
+
+    def _read(self) -> dict:
         while True:
             while b"\n" not in self.buf:
                 chunk = self.s.recv(65536)
@@ -83,10 +89,16 @@ class Agent:
                     raise ConnectionError("guest agent closed the connection")
                 self.buf += chunk
             line, self.buf = self.buf.split(b"\n", 1)
-            line = line.lstrip(b"\xff").strip()
-            if not line:
-                continue
-            msg = json.loads(line)
+            # guest-sync-delimited puts 0xFF before its reply; anything in front
+            # of it is a stale partial line
+            line = line.rsplit(b"\xff", 1)[-1].strip()
+            if line:
+                return json.loads(line)
+
+    def call(self, execute: str, **arguments):
+        self._send(execute, **arguments)
+        while True:
+            msg = self._read()
             if "error" in msg:
                 raise RuntimeError(f"guest agent {execute}: {msg['error'].get('desc')}")
             if "return" in msg:
@@ -159,8 +171,10 @@ def cmd_start(a) -> None:
     subprocess.run([str(L.OUR_QEMU / "qemu-img.exe"), "create", "-q", "-f", "qcow2", "-F", "qcow2",
                     "-b", str(base), str(d / "disk.qcow2")], check=True, timeout=60)
     shutil.copyfile(efivars, d / "efivars.qcow2")  # not copy: the base is read-only
-    up = [sys.executable, str(Path(L.__file__).resolve()), "up", a.vm, "--window", "--nvme",
-          "--no-enter", "--no-cache", "--minutes", str(a.minutes), "--mem", a.mem, "--cpus", str(a.cpus)]
+    if a.headless:
+        a.no_gpu = True  # GL renders through the SDL window
+    up = [sys.executable, str(Path(L.__file__).resolve()), "up", a.vm] + ([] if a.headless else ["--window"]) + [
+          "--nvme", "--no-enter", "--no-cache", "--minutes", str(a.minutes), "--mem", a.mem, "--cpus", str(a.cpus)]
     up += [f"--hostfwd=tcp:127.0.0.1:{h}-:{g}" for g, h in FORWARDS.items()]
     if a.no_gpu:
         up.append("--no-gl")
@@ -378,6 +392,8 @@ def main() -> None:
     s.add_argument("--qemu", metavar="DIR", help="other QEMU build folder (test builds)")
     s.add_argument("--rdp", action="store_true",
                    help="Remote Desktop on: boot base-rdp.qcow2, guest 3389 at 127.0.0.1:13389")
+    s.add_argument("--headless", action="store_true",
+                   help="no QEMU window on the desktop (VNC only); implies --no-gpu")
     s.set_defaults(f=cmd_start)
     s = sub.add_parser("push"); s.add_argument("local"); s.add_argument("guest", nargs="?")
     s.set_defaults(f=cmd_push)
