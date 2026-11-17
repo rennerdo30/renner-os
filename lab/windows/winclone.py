@@ -5,7 +5,7 @@ Every start boots a fresh overlay on a frozen copy of the "win" VM's disk;
 stop discards it. Commands run in tom's logged-on desktop session, not elevated
 by default (an interactive scheduled task), so they see the desktop and the GPU.
 
-  python lab/windows/winclone.py start [--minutes 60] [--mem 6G] [--no-gpu]
+  python lab/windows/winclone.py start [--minutes 60] [--mem 6G] [--no-gpu] [--rdp]
   python lab/windows/winclone.py push LOCAL [GUEST_PATH]      (default C:\\remora\\<name>)
   python lab/windows/winclone.py exec [--timeout 120] [--elevated] [--system] COMMAND
   python lab/windows/winclone.py exec-background [--elevated] COMMAND   (prints the log path)
@@ -17,6 +17,14 @@ by default (an interactive scheduled task), so they see the desktop and the GPU.
 COMMAND is one cmd.exe command line; "-" reads it from stdin (no quoting problems).
 Base: BASE_DIR/base.qcow2 + base-efivars.qcow2, made once with
 `qemu-img convert -O qcow2 vms/win/disk.qcow2 base.qcow2` while "win" is stopped.
+
+--rdp boots from base-rdp.qcow2 instead: a read-only layer on base.qcow2 with
+Remote Desktop already on (fDenyTSConnections=0, the "Remote Desktop" firewall
+group, TermService automatic), baked with one clean shutdown. RDP has to be on
+before TermService starts at boot; switching it on in a running clone leaves
+no listener (LocalSessionManager event 17, 0x80070005), and a clone cannot
+reboot. Guest TCP 3389 is forwarded to 127.0.0.1:13389 (NLA; user tom).
+Never change base.qcow2 in place: base-rdp.qcow2 and other overlays sit on it.
 """
 
 from __future__ import annotations
@@ -39,6 +47,7 @@ import lab as L  # noqa: E402
 BASE_DIR = L.LAB / "winclone"
 USER = "tom"
 FORWARDS = {3390: 13390}  # guest port -> host port (127.0.0.1)
+RDP_FORWARD = {3389: 13389}  # added by start --rdp
 GUEST_DIR = r"C:\Users\Public\winclone"  # writable by tom's limited token
 
 
@@ -132,7 +141,10 @@ def logged_on(a: Agent) -> bool:
 
 
 def cmd_start(a) -> None:
-    base, efivars = BASE_DIR / "base.qcow2", BASE_DIR / "base-efivars.qcow2"
+    layer = "base-rdp" if a.rdp else "base"
+    base, efivars = BASE_DIR / f"{layer}.qcow2", BASE_DIR / f"{layer}-efivars.qcow2"
+    if a.rdp:
+        FORWARDS.update(RDP_FORWARD)
     if not base.exists() or not efivars.exists():
         die(f"no base image in {BASE_DIR}")
     ensure_vm(a.vm)
@@ -364,6 +376,8 @@ def main() -> None:
     s.add_argument("--timeout", type=float, default=300, help="wait this long for the desktop")
     s.add_argument("--qemu-args", default="", help="extra QEMU arguments (debugging)")
     s.add_argument("--qemu", metavar="DIR", help="other QEMU build folder (test builds)")
+    s.add_argument("--rdp", action="store_true",
+                   help="Remote Desktop on: boot base-rdp.qcow2, guest 3389 at 127.0.0.1:13389")
     s.set_defaults(f=cmd_start)
     s = sub.add_parser("push"); s.add_argument("local"); s.add_argument("guest", nargs="?")
     s.set_defaults(f=cmd_push)
